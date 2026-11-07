@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ShokoAnime/ShokoServer/refs/heads/master/Shoko.BuildTools/manifest.schema.json",
+  "id": "9ebe771c-0bdf-4a28-b6c1-df714d749ca5",
+  "name": "Season Posters",
+  "overview": "Gives every season in a Shoko group its own accurate poster, with a review page for anything uncertain.",
+  "namespace": "season-posters",
+  "authors": "crowquillx",
+  "tags": [
+    "service-registration",
+    "hosted-service",
+    "images",
+    "posters",
+    "jellyfin"
+  ],
+  "is_meta": false,
+  "releases": [
+    {
+      "version": "0.1.1",
+      "tag": "v0.1.1",
+      "released_at": "2026-11-07T21:24:47.9438667Z",
+      "channel": "Dev",
+      "is_meta": false,
+      "dependencies": [],
+      "archives": [
+        {
+          "runtime": "any",
+          "abstraction": "6.0.0",
+          "url": "https://github.com/crowquillx/shoko-season-posters/releases/download/v0.1.1/Shoko.SeasonPosters-v0.1.1.zip",
+          "checksum": "sha256:e3353d47271a667b88773d6f1fccbe06bd2b383c607b8c1aa5dc50be4e464f8f",
+          "packed_size": 89299,
+          "unpacked_size": 214949
+        }
+      ]
+    }
+  ]
+}
