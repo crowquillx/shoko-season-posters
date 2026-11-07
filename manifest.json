@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ShokoAnime/ShokoServer/refs/heads/master/Shoko.BuildTools/manifest.schema.json",
+  "id": "9ebe771c-0bdf-4a28-b6c1-df714d749ca5",
+  "name": "Season Posters",
+  "overview": "Gives every season in a Shoko group its own accurate poster, with a review page for anything uncertain.",
+  "authors": "crowquillx",
+  "tags": ["images", "posters", "jellyfin"],
+  "releases": []
+}

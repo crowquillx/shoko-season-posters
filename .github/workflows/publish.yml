@@ -1,0 +1,101 @@
+# Builds the plugin with Shoko's build tool, attaches it to a GitHub release, and updates the feed that
+# Shoko reads. The feed lives on the metadata branch because Shoko needs a text content type, which raw
+# GitHub files have and release assets do not.
+name: Publish
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        run: dotnet test Shoko.SeasonPosters.slnx -c Release
+
+      - name: Choose the version
+        id: version
+        run: |
+          set -euo pipefail
+          base="$(sed -n -E 's#.*<Version>([0-9]+\.[0-9]+)\.[0-9]+</Version>.*#\1#p' src/Shoko.SeasonPosters.csproj)"
+          version="$base.$GITHUB_RUN_NUMBER"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch the current feed
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if git fetch --quiet origin metadata; then
+            git show origin/metadata:manifest.json > dist/manifest.json
+          else
+            cp manifest.json dist/manifest.json
+          fi
+
+      - name: Build the package
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          dotnet tool install --global Shoko.BuildTools
+          cd src
+          "$HOME/.dotnet/tools/shoko-build" -c Release \
+            --channel Dev \
+            --tag "$TAG" \
+            --manifest ../dist/manifest.json \
+            --prune 10 \
+            --output "../dist/Shoko.SeasonPosters-$TAG.zip" \
+            --url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/Shoko.SeasonPosters-$TAG.zip" \
+            -- "-p:Version=$VERSION" "-p:ReleaseChannel=Dev" "-p:RepositoryUrl=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+
+      - name: Check the package
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          listing="$(unzip -Z1 "dist/Shoko.SeasonPosters-$TAG.zip")"
+          echo "$listing"
+          echo "$listing" | grep -qx 'Shoko.SeasonPosters.dll'
+          if echo "$listing" | grep -q 'Shoko.Abstractions.dll'; then
+            echo "::error::The package ships its own Shoko.Abstractions, which makes the server skip the plugin."
+            exit 1
+          fi
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release create "$TAG" "dist/Shoko.SeasonPosters-$TAG.zip" --prerelease --target main --title "$TAG" --generate-notes
+
+      - name: Update the feed
+        run: |
+          set -euo pipefail
+          cp dist/manifest.json /tmp/manifest.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git rev-parse --verify --quiet origin/metadata >/dev/null; then
+            git switch --force-create metadata origin/metadata
+          else
+            git switch --force --orphan metadata
+          fi
+          cp /tmp/manifest.json manifest.json
+          git add manifest.json
+          git commit -m "chore(feed): publish ${{ steps.version.outputs.tag }}"
+          git push origin metadata

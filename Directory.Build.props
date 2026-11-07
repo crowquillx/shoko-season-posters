@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <!-- The follow-shoko-daily workflow bumps these two lines when Shoko publishes new builds. -->
+    <ShokoAbstractionsVersion>6.0.0-alpha.126</ShokoAbstractionsVersion>
+    <ShokoBuildToolsTargetsVersion>0.7.2</ShokoBuildToolsTargetsVersion>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

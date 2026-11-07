@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup Label="Plugin">
+    <AssemblyName>Shoko.SeasonPosters</AssemblyName>
+    <RootNamespace>Shoko.SeasonPosters</RootNamespace>
+    <PluginGenerateClass>true</PluginGenerateClass>
+    <PluginID>9ebe771c-0bdf-4a28-b6c1-df714d749ca5</PluginID>
+    <PluginName>Season Posters</PluginName>
+    <PluginOverview>Gives every season in a Shoko group its own accurate poster, with a review page for anything uncertain.</PluginOverview>
+    <PluginNamespace>season-posters</PluginNamespace>
+    <PluginTags>images,posters,jellyfin</PluginTags>
+    <Version>0.1.0</Version>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Shoko.Abstractions" Version="$(ShokoAbstractionsVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Shoko.BuildTools.Targets" Version="$(ShokoBuildToolsTargetsVersion)" PrivateAssets="All" ExcludeAssets="runtime" />
+    <InternalsVisibleTo Include="Shoko.SeasonPosters.Tests" />
+    <EmbeddedResource Include="Web/Ui/index.html" LogicalName="ui.index.html" />
+    <EmbeddedResource Include="Web/Ui/app.css" LogicalName="ui.app.css" />
+    <EmbeddedResource Include="Web/Ui/app.js" LogicalName="ui.app.js" />
+  </ItemGroup>
+</Project>

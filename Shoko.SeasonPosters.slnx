@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/Shoko.SeasonPosters.csproj" />
+  <Project Path="tests/Shoko.SeasonPosters.Tests.csproj" />
+</Solution>

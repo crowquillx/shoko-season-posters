@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Poster review</title>
+  <link rel="stylesheet" href="/plugin/season-posters/app.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Poster review</h1>
+      <p id="summary" role="status">Loading…</p>
+    </div>
+    <div class="actions">
+      <label><input id="flagged-only" type="checkbox" checked> Needs review only</label>
+      <select id="reason" aria-label="Filter by reason"><option value="">Any reason</option></select>
+      <input id="search" type="search" placeholder="Search titles" aria-label="Search titles">
+      <button id="scan" type="button">Scan again</button>
+      <button id="apply" type="button" class="primary">Apply all</button>
+    </div>
+  </header>
+  <main id="shows"></main>
+  <script src="/plugin/season-posters/app.js"></script>
+</body>
+</html>

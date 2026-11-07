@@ -1,0 +1,90 @@
+# Shoko's plugin API moves with its daily builds. Every day this moves the plugin to the newest packages.
+# When the build and tests pass it commits the bump and publishes a Dev release. When they fail it opens an
+# issue with the compiler output, and the plugin stays on the last version that worked.
+name: Follow Shoko daily
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: follow-shoko-daily
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.bump.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Move to the newest packages
+        id: bump
+        run: |
+          set -euo pipefail
+          latest() { curl -fsSL "https://api.nuget.org/v3-flatcontainer/$1/index.json" | jq -r '.versions[-1]'; }
+          abstractions="$(latest shoko.abstractions)"
+          targets="$(latest shoko.buildtools.targets)"
+          sed -i -E "s#(<ShokoAbstractionsVersion>)[^<]+#\1${abstractions}#; s#(<ShokoBuildToolsTargetsVersion>)[^<]+#\1${targets}#" Directory.Build.props
+          echo "abstractions=$abstractions" >> "$GITHUB_OUTPUT"
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and test against them
+        id: test
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          set -o pipefail
+          dotnet test Shoko.SeasonPosters.slnx -c Release 2>&1 | tee test-output.txt
+
+      - name: Commit the bump
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Directory.Build.props
+          git commit -m "chore(deps): follow Shoko.Abstractions ${{ steps.bump.outputs.abstractions }}"
+          git push
+
+      - name: Report a break
+        if: failure() && steps.test.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.abstractions }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Build breaks on Shoko.Abstractions $VERSION"
+          if [ -n "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number')" ]; then
+            exit 0
+          fi
+          {
+            echo "The daily bump to \`$VERSION\` did not build or pass its tests, so the plugin stays on the previous version."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            grep -E 'error|\[FAIL\]|Failed!' test-output.txt | sort -u | head -50
+            echo '```'
+          } > issue.md
+          gh issue create --title "$title" --body-file issue.md
+
+  publish:
+    needs: bump
+    if: needs.bump.outputs.changed == 'true'
+    uses: ./.github/workflows/publish.yml
+    permissions:
+      contents: write
