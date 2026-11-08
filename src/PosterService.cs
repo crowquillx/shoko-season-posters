@@ -12,7 +12,7 @@ namespace Shoko.SeasonPosters;
 
 public sealed record LibraryPlan(DateTimeOffset CreatedAt, IReadOnlyList<ShowPlan> Shows);
 
-public sealed record ApplyResult(int Changed, int Failed, int JellyfinUploaded, int JellyfinFailed);
+public sealed record ApplyResult(int Changed, int Failed, int JellyfinUploaded, int JellyfinFailed, int ShowPostersFailed = 0);
 
 /// <summary>Plans and applies posters. Only one scan or apply runs at a time.</summary>
 public sealed class PosterService(
@@ -68,10 +68,13 @@ public sealed class PosterService(
                     failed++;
             }
 
+            var showPostersFailed = await RecordShowPostersAsync(shows, cancellationToken).ConfigureAwait(false);
             var (uploaded, uploadFailed) = await jellyfin.SyncAsync(shows, cancellationToken).ConfigureAwait(false);
             Scan();
-            logger.LogInformation("Season Posters applied {Changed} posters ({Failed} failed) and uploaded {Uploaded} show posters ({UploadFailed} failed).", changed, failed, uploaded, uploadFailed);
-            return new ApplyResult(changed, failed, uploaded, uploadFailed);
+            logger.LogInformation(
+                "Season Posters applied {Changed} posters ({Failed} failed), recorded show posters ({ShowPostersFailed} could not be downloaded) and uploaded {Uploaded} show posters to Jellyfin ({UploadFailed} failed).",
+                changed, failed, showPostersFailed, uploaded, uploadFailed);
+            return new ApplyResult(changed, failed, uploaded, uploadFailed, showPostersFailed);
         }
         finally
         {
@@ -170,6 +173,32 @@ public sealed class PosterService(
             shows.Select(show => PosterPlanner.Plan(show, languages, settings.MinimumSeasonSharePercent)).ToArray());
         _latest = plan;
         return plan;
+    }
+
+    /// <summary>
+    /// Downloads each applied show's own poster and records it, so clients that build shows from Shoko, such as the
+    /// Silo ShokoAnime plugin, can use it. Returns how many could not be downloaded.
+    /// </summary>
+    private async Task<int> RecordShowPostersAsync(IReadOnlyList<ShowPlan> shows, CancellationToken cancellationToken)
+    {
+        var available = new HashSet<Guid>();
+        var failed = 0;
+        foreach (var imageId in shows.Select(show => show.JellyfinPosterImageId).OfType<Guid>().Distinct())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var image = images.GetImageByID(imageId);
+            if (image is not null && (image.IsAvailable || await images.DownloadImage(image).ConfigureAwait(false)))
+            {
+                available.Add(imageId);
+                continue;
+            }
+
+            logger.LogWarning("Season Posters could not download show poster {ImageId}.", imageId);
+            failed++;
+        }
+
+        store.Update(state => (true, ShowPosterRecords.Update(state.ShowPosters, shows, available)));
+        return failed;
     }
 
     private async Task<bool> SetPreferredAsync(int seriesId, Guid imageId)

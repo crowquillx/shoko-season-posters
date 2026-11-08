@@ -13,10 +13,13 @@ public enum SplitSeasonPolicy
     LeaveForManualChoice,
 }
 
-/// <summary>How the Jellyfin show poster relates to the poster of its main season.</summary>
+/// <summary>How the show poster relates to the poster of its main season.</summary>
 public enum ShowPosterMode
 {
-    /// <summary>The main season keeps its season poster; the TMDB show poster goes straight to Jellyfin.</summary>
+    /// <summary>
+    /// The main season keeps its season poster, and the show gets the TMDB show poster: uploaded straight to Jellyfin,
+    /// and listed for the Silo ShokoAnime plugin. The value keeps its first name so stored settings still load.
+    /// </summary>
     JellyfinUpload,
 
     /// <summary>The main series uses the TMDB show poster, so the show and that season share it.</summary>

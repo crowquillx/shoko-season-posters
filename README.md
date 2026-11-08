@@ -11,7 +11,8 @@ Daily Shoko only. It uses the 6.0 plugin API, which stable 5.3 does not have. Sh
 Early, tested against one real library on Shoko `v6.0.0-dev.588`.
 
 - **Verified:** loading, planning, the review page and the Shoko side of applying. On 834 shows and 1,340 entries, no poster was used twice in a show. Applying a show set its season posters as preferred and downloaded them.
-- **Not yet verified:** posters reaching Jellyfin through Shokofin, and the Jellyfin show poster upload and restore. The upload code has only been tested against a simulated Jellyfin.
+- **Verified on `v6.0.0-dev.591` with Shokofin and Jellyfin `12.4.0`:** a show poster upload to Jellyfin, and its restore after the poster was replaced.
+- **Not yet verified:** season posters reaching Jellyfin through a Shokofin refresh, and show posters reaching Silo through the [Silo ShokoAnime plugin](https://github.com/crowquillx/silo-shoko-plugin).
 
 ## What it picks
 
@@ -51,8 +52,8 @@ These are on the plugin's settings page.
 | Poster languages | `en,none,ja` | Language order, best first. `none` means textless or unknown. |
 | Season match threshold | 60% | The share of an entry's linked episodes that must point at one TMDB season. Below this it is flagged. |
 | Split seasons | AniDB poster | See [below](#split-seasons). |
-| Show poster | Upload to Jellyfin | See [below](#show-posters). |
-| Jellyfin URL and API key | Empty | Only needed to upload show posters to Jellyfin. |
+| Show poster | Own show poster | See [below](#show-posters). |
+| Jellyfin URL and API key | Empty | Only needed to upload own show posters to Jellyfin. |
 
 The split season and show poster settings can also be changed per show on the review page.
 
@@ -66,9 +67,9 @@ When several AniDB entries share one TMDB season, TMDB can't say which poster be
 
 ### Show posters
 
-Shokofin reads the show poster and its main season's poster from the same Shoko series, so Shoko alone can't make them differ.
+Shokofin reads the show poster and its main season's poster from the same Shoko series, so Shoko alone can't make them differ. A Shoko group's own images are also just its main series' poster.
 
-- **Upload to Jellyfin:** the season keeps its season poster, and the TMDB show poster goes straight to the Jellyfin show. This needs the Jellyfin URL and an API key.
+- **Own show poster:** the season keeps its season poster, and the show gets the TMDB show poster. Applying a show downloads that poster and lists it at `GET /api/plugin/season-posters/show-posters`, which any signed-in user can read. The [Silo ShokoAnime plugin](https://github.com/crowquillx/silo-shoko-plugin) uses that list for its show posters. For Jellyfin, the poster is uploaded straight to the show, which needs the Jellyfin URL and an API key.
 - **TMDB show poster on main season:** the show and that season share the show poster.
 - **Same as main season:** the show and that season share the season poster.
 
@@ -99,7 +100,7 @@ Changes to TMDB links or groups also start a scan after two quiet minutes.
 ## Known limits
 
 - Two TMDB entries can hold the same artwork as separate images, for example a show and its only season. These are compared by image ID, so that isn't detected. Choose another poster on the review page if it bothers you.
-- Only direct-to-Jellyfin uploads can give a show a different poster from its main season.
+- Only the own show poster mode can give a show a different poster from its main season, and only Jellyfin and clients that read the show poster list see it. Silo shows the new poster once that show's metadata is refreshed in Silo.
 - The show poster mode that sets the main season assumes Shokofin's default season ordering, where the Shoko main series is the show's default season.
 - TMDB is the only high-resolution source so far.
 
