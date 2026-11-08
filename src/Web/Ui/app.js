@@ -18,7 +18,7 @@
   };
   const kinds = { TmdbSeason: 'TMDB season', TmdbMovie: 'TMDB movie', TmdbShow: 'TMDB show', AniDb: 'AniDB' };
   const splitPolicies = { '': 'Default', AniDbPoster: 'AniDB poster', NextTmdbPoster: 'Next TMDB poster', LeaveForManualChoice: 'Leave for me' };
-  const showModes = { '': 'Default', JellyfinUpload: 'Upload to Jellyfin', TmdbShowPosterOnMainSeason: 'TMDB show poster on main season', SameAsMainSeason: 'Same as main season' };
+  const showModes = { '': 'Default', JellyfinUpload: 'Own show poster', TmdbShowPosterOnMainSeason: 'TMDB show poster on main season', SameAsMainSeason: 'Same as main season' };
 
   const el = {
     summary: document.getElementById('summary'),
@@ -199,7 +199,7 @@
   function renderShowPoster(show) {
     if (show.showMode !== 'JellyfinUpload' || show.showPosterAlternatives.length === 0) return null;
     return choicePicker(
-      'Choose the Jellyfin show poster',
+      'Choose the show poster',
       show.showPosterAlternatives,
       show.jellyfinPosterImageId,
       (imageId) => saveShow(show, { pinnedShowPosterImageId: imageId }),

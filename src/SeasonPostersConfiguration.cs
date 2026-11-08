@@ -29,10 +29,10 @@ public class SeasonPostersConfiguration : IPluginConfiguration
     [DefaultValue(ShowPosterMode.JellyfinUpload)]
     public ShowPosterMode ShowPoster { get; set; } = ShowPosterMode.JellyfinUpload;
 
-    [Display(Name = "Jellyfin URL", Description = "Only used by the Jellyfin upload show poster mode, for example http://jellyfin:8096.")]
+    [Display(Name = "Jellyfin URL", Description = "Only needed to upload own show posters to Jellyfin, for example http://jellyfin:8096. Silo reads them from Shoko instead.")]
     public string? JellyfinUrl { get; set; }
 
-    [Display(Name = "Jellyfin API key", Description = "Only used by the Jellyfin upload show poster mode.")]
+    [Display(Name = "Jellyfin API key", Description = "Only needed to upload own show posters to Jellyfin.")]
     [DataType(DataType.Password)]
     public string? JellyfinApiKey { get; set; }
 }

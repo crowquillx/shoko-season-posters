@@ -24,6 +24,16 @@ public sealed class JellyfinUpload
     public required string Tag { get; set; }
 }
 
+/// <summary>A show's own poster, recorded when the show was applied, for clients that read show posters from Shoko.</summary>
+public sealed class AppliedShowPoster
+{
+    public int? GroupId { get; set; }
+
+    public required int MainSeriesId { get; set; }
+
+    public required Guid ImageId { get; set; }
+}
+
 public sealed class PluginState
 {
     /// <summary>The poster this plugin last made preferred, per series. Anything else preferred was set by someone else.</summary>
@@ -37,6 +47,41 @@ public sealed class PluginState
 
     /// <summary>Posters uploaded straight to Jellyfin, per show key.</summary>
     public Dictionary<string, JellyfinUpload> Uploads { get; set; } = [];
+
+    /// <summary>Each applied show's own poster, per show key, whether or not Jellyfin is set up.</summary>
+    public Dictionary<string, AppliedShowPoster> ShowPosters { get; set; } = [];
+}
+
+internal static class ShowPosterRecords
+{
+    /// <summary>
+    /// Records the applied shows' own posters. A show without its own poster is forgotten. A show whose poster could
+    /// not be downloaded keeps its earlier record, since that image is still on disk.
+    /// </summary>
+    public static bool Update(Dictionary<string, AppliedShowPoster> records, IEnumerable<ShowPlan> shows, IReadOnlySet<Guid> available)
+    {
+        var changed = false;
+        foreach (var show in shows)
+        {
+            if (show.JellyfinPosterImageId is not { } imageId)
+            {
+                changed |= records.Remove(show.Key);
+                continue;
+            }
+
+            if (!available.Contains(imageId))
+                continue;
+
+            if (records.TryGetValue(show.Key, out var current)
+                && current.ImageId == imageId && current.GroupId == show.GroupId && current.MainSeriesId == show.MainSeriesId)
+                continue;
+
+            records[show.Key] = new AppliedShowPoster { GroupId = show.GroupId, MainSeriesId = show.MainSeriesId, ImageId = imageId };
+            changed = true;
+        }
+
+        return changed;
+    }
 }
 
 /// <summary>Keeps the state file in the plugin's data folder, which the server includes in its own backups.</summary>
