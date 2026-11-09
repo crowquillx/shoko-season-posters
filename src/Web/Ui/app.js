@@ -108,6 +108,50 @@
     }, message);
   }
 
+  // The page runs in Shoko's sandboxed iframe, which blocks confirm() and alert(), so results are shown in the
+  // summary line instead.
+  function describeApply(result) {
+    const parts = [`${result.changed} posters set`];
+    if (result.failed) parts.push(`${result.failed} failed`);
+    if (result.jellyfinUploaded || result.jellyfinFailed) {
+      parts.push(`${result.jellyfinUploaded} show posters uploaded to Jellyfin${result.jellyfinFailed ? ` (${result.jellyfinFailed} failed)` : ''}`);
+    }
+    if (result.showPostersFailed) parts.push(`${result.showPostersFailed} show posters could not be downloaded`);
+    return `Applied: ${parts.join(', ')}.`;
+  }
+
+  function apply(showKeys, message) {
+    return run(async () => {
+      const result = await call('/apply', { method: 'POST', json: showKeys ? { showKeys } : {} });
+      await reload();
+      el.summary.textContent = `${describeApply(result)} ${el.summary.textContent}`;
+      el.summary.classList.toggle('error', result.failed > 0 || result.jellyfinFailed > 0);
+    }, message);
+  }
+
+  // A second click within a few seconds confirms, since the sandbox blocks confirm().
+  function confirmClick(button, prompt, onConfirm) {
+    const label = button.textContent;
+    let timer = null;
+    button.addEventListener('click', () => {
+      if (timer === null) {
+        button.textContent = prompt();
+        button.classList.add('confirming');
+        timer = setTimeout(() => {
+          timer = null;
+          button.textContent = label;
+          button.classList.remove('confirming');
+        }, 5000);
+        return;
+      }
+      clearTimeout(timer);
+      timer = null;
+      button.textContent = label;
+      button.classList.remove('confirming');
+      onConfirm();
+    });
+  }
+
   function select(labelText, options, value, onChange) {
     const control = make('select', { value });
     for (const [optionValue, label] of Object.entries(options)) {
@@ -219,7 +263,7 @@
       select('Show poster', showModes, show.showMode, (value) => act(() => saveShow(show, { showMode: value }), 'Saving…')),
     );
     const applyButton = make('button', { type: 'button', textContent: 'Apply this show' });
-    applyButton.addEventListener('click', () => act(() => call('/apply', { method: 'POST', json: { showKeys: [show.key] } }), 'Applying…'));
+    applyButton.addEventListener('click', () => apply([show.key], 'Applying…'));
 
     return make(
       'section',
@@ -286,10 +330,14 @@
     const result = await call('/logos/apply', { method: 'POST' });
     el.summary.textContent = `Logos: ${result.changed} set, ${result.kept} kept, ${result.failed} failed.`;
   }, 'Applying logos…'));
-  el.apply.addEventListener('click', () => {
-    if (!confirm('Apply every pending poster change?')) return;
-    act(() => call('/apply', { method: 'POST', json: {} }), 'Applying…');
-  });
+  confirmClick(
+    el.apply,
+    () => {
+      const pending = plan ? plan.shows.flatMap((show) => show.series).filter((series) => series.action === 'SetPreferred').length : 0;
+      return `Click again to apply ${pending} changes`;
+    },
+    () => apply(null, 'Applying every pending change… this can take several minutes.'),
+  );
 
   run(reload, 'Loading…');
 })();
