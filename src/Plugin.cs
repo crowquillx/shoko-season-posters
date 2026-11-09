@@ -22,6 +22,7 @@ public partial class Plugin : IPlugin<SeasonPostersConfiguration>, IPluginServic
         serviceCollection.AddSingleton<ShokoLibrary>();
         serviceCollection.AddSingleton<JellyfinShowPosters>();
         serviceCollection.AddSingleton<PosterService>();
+        serviceCollection.AddSingleton<LogoService>();
         serviceCollection.AddSingleton<ChangeWatcher>();
         serviceCollection.AddHostedService(provider => provider.GetRequiredService<ChangeWatcher>());
     }

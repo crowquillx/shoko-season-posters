@@ -11,6 +11,7 @@ public sealed class ChangeWatcher(
     IShokoGroupManager groups,
     ISystemService system,
     PosterService posters,
+    LogoService logos,
     ILogger<ChangeWatcher> logger) : IHostedService, IDisposable
 {
     private static readonly TimeSpan QuietPeriod = TimeSpan.FromMinutes(2);
@@ -51,6 +52,7 @@ public sealed class ChangeWatcher(
         try
         {
             await posters.RunAutomaticPassAsync(_stopping.Token).ConfigureAwait(false);
+            await logos.ApplyAsync(_stopping.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

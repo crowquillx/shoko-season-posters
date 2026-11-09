@@ -50,6 +50,9 @@ public sealed class PluginState
 
     /// <summary>Each applied show's own poster, per show key, whether or not Jellyfin is set up.</summary>
     public Dictionary<string, AppliedShowPoster> ShowPosters { get; set; } = [];
+
+    /// <summary>The logo this plugin last made preferred, per series. Any other preferred logo was picked by someone else.</summary>
+    public Dictionary<int, Guid> AssignedLogos { get; set; } = [];
 }
 
 internal static class ShowPosterRecords
