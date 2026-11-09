@@ -94,6 +94,8 @@ The page opens on the entries that need review, and you can filter by reason or 
 - **Upload your own.**
 - **Return to automatic**, which also hands over a poster that was set outside this plugin.
 
+**Apply all** applies every pending change after a second click, and the summary line then reports how many posters were set and uploaded and how many failed. Shoko shows the page in a sandboxed frame that blocks browser dialogs, so the page never uses them.
+
 A preferred poster set outside this plugin is never replaced unless you choose that here. Choices are kept in `state.json` in the plugin's data folder, which Shoko includes in its backups.
 
 ## Scheduled actions
