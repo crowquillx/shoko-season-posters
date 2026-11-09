@@ -5,18 +5,21 @@ using Shoko.Abstractions.ScheduledActions;
 namespace Shoko.SeasonPosters.Background;
 
 /// <summary>Picks up what no event covers, such as new TMDB posters.</summary>
-public class ScanPostersAction(PosterService posters) : IScheduledAction
+public class ScanPostersAction(PosterService posters, LogoService logos) : IScheduledAction
 {
     public string Name => "Scan Season Posters";
 
-    public string? Description => "Plans posters for every show, and applies the plan when automatic apply is on.";
+    public string? Description => "Plans posters for every show, and applies the plan when automatic apply is on. Sets logos in the logo languages.";
 
     public ActionCategory Category => ActionCategory.PluginInferred;
 
     public IReadOnlyList<ActionTrigger> DefaultTriggers => [ActionTrigger.Every(TimeSpan.FromHours(6))];
 
-    public Task Execute(IProgress<decimal> progress, CancellationToken token)
-        => posters.RunAutomaticPassAsync(token);
+    public async Task Execute(IProgress<decimal> progress, CancellationToken token)
+    {
+        await posters.RunAutomaticPassAsync(token).ConfigureAwait(false);
+        await logos.ApplyAsync(token).ConfigureAwait(false);
+    }
 }
 
 /// <summary>Puts back uploaded show posters after a Shokofin refresh replaces them.</summary>

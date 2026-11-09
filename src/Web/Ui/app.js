@@ -28,6 +28,7 @@
     reason: document.getElementById('reason'),
     scan: document.getElementById('scan'),
     apply: document.getElementById('apply'),
+    logos: document.getElementById('logos'),
   };
   const pageSize = 25;
   let plan = null;
@@ -281,6 +282,10 @@
     plan = await call('/scan', { method: 'POST' });
     render();
   }, 'Scanning…'));
+  el.logos.addEventListener('click', () => run(async () => {
+    const result = await call('/logos/apply', { method: 'POST' });
+    el.summary.textContent = `Logos: ${result.changed} set, ${result.kept} kept, ${result.failed} failed.`;
+  }, 'Applying logos…'));
   el.apply.addEventListener('click', () => {
     if (!confirm('Apply every pending poster change?')) return;
     act(() => call('/apply', { method: 'POST', json: {} }), 'Applying…');

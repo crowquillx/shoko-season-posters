@@ -50,6 +50,7 @@ These are on the plugin's settings page.
 |---|---|---|
 | Apply automatically | Off | Off: scans only plan. On: scans and detected changes apply their plan. |
 | Poster languages | `en,none,ja` | Language order, best first. `none` means textless or unknown. |
+| Logo languages | `en` | Language order for [logos](#logos), best first. Empty leaves logos alone. |
 | Season match threshold | 60% | The share of an entry's linked episodes that must point at one TMDB season. Below this it is flagged. |
 | Split seasons | AniDB poster | See [below](#split-seasons). |
 | Show poster | Own show poster | See [below](#show-posters). |
@@ -75,6 +76,15 @@ Shokofin reads the show poster and its main season's poster from the same Shoko 
 
 A Shokofin refresh replaces every image on an item, including an uploaded show poster. The **Restore Jellyfin Show Posters** action checks every 15 minutes and uploads it again, so a show can briefly lose its poster until the next check.
 
+### Logos
+
+For a series' logo, Shoko uses the logo its source pins, whatever its language. For anime from TMDB that is usually the Japanese logo, even when English ones are downloaded. Each series without a logo you picked in Shoko gets its best logo in the logo languages as its preferred logo:
+- Languages come in the setting's order, then logos Shoko has already downloaded, then Shoko's own order.
+- A series with no logo in these languages keeps the one it has.
+- A logo this plugin set is replaced if a better one appears, or if you change the languages.
+
+Shokofin and the Silo ShokoAnime plugin show a series' preferred logo, and a group shows its main series' logo. Logos are set on every scan and after changes, whatever **Apply automatically** says, and **Apply logos** on the review page sets them straight away. Jellyfin and Silo show a new logo once the item is refreshed.
+
 ## Review page
 
 The page opens on the entries that need review, and you can filter by reason or search by title. For each entry you can:
@@ -92,7 +102,7 @@ Both appear in Shoko's scheduled actions, where you can change when they run.
 
 | Action | Default | What it does |
 |---|---|---|
-| Scan Season Posters | Every 6 hours | Updates the plan, and applies it when automatic apply is on. |
+| Scan Season Posters | Every 6 hours | Updates the plan, and applies it when automatic apply is on. Sets [logos](#logos). |
 | Restore Jellyfin Show Posters | Every 15 minutes | Uploads a show poster again if a refresh replaced it. |
 
 Changes to TMDB links or groups also start a scan after two quiet minutes.

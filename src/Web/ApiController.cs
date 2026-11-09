@@ -31,7 +31,7 @@ public sealed class ShowSettingsBody
 [ApiController]
 [Authorize("admin")]
 [Route("api/plugin/season-posters")]
-public class ApiController(PosterService posters, IImageManager images) : ControllerBase
+public class ApiController(PosterService posters, LogoService logos, IImageManager images) : ControllerBase
 {
     private const long MaxUploadBytes = 50 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -51,6 +51,11 @@ public class ApiController(PosterService posters, IImageManager images) : Contro
         var keys = body.ShowKeys is { Count: > 0 } ? body.ShowKeys.ToHashSet(StringComparer.Ordinal) : null;
         return JsonResult(await posters.ApplyAsync(keys, cancellationToken).ConfigureAwait(false));
     }
+
+    /// <summary>Sets every series' logo in the logo languages now, instead of waiting for the next automatic pass.</summary>
+    [HttpPost("logos/apply")]
+    public async Task<ContentResult> ApplyLogos(CancellationToken cancellationToken)
+        => JsonResult(await logos.ApplyAsync(cancellationToken).ConfigureAwait(false));
 
     [HttpPut("series/{seriesId:int}/pin")]
     public async Task<ActionResult> Pin([FromRoute] int seriesId, [FromBody] PinBody body, CancellationToken cancellationToken)

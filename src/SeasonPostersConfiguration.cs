@@ -16,6 +16,10 @@ public class SeasonPostersConfiguration : IPluginConfiguration
     [DefaultValue("en,none,ja")]
     public string PosterLanguages { get; set; } = "en,none,ja";
 
+    [Display(Name = "Logo languages", Description = "Comma-separated language codes, best first. \"none\" means textless or unknown. Each series gets its best logo in these languages as its preferred logo, unless you picked one in Shoko. A series with no logo in these languages keeps its logo. Leave empty to leave logos alone.")]
+    [DefaultValue("en")]
+    public string LogoLanguages { get; set; } = "en";
+
     [Display(Name = "Season match threshold (%)", Description = "An entry matches a TMDB season when at least this share of its linked episodes point to it. Otherwise it is flagged for review.")]
     [Range(51, 100)]
     [DefaultValue(60)]
