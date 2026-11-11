@@ -34,7 +34,12 @@ jobs:
         run: |
           set -euo pipefail
           base="$(sed -n -E 's#.*<Version>([0-9]+\.[0-9]+)\.[0-9]+</Version>.*#\1#p' src/Shoko.SeasonPosters.csproj)"
-          version="$base.$GITHUB_RUN_NUMBER"
+          # Take the next patch after the newest existing tag. The run number can't be used: when the daily
+          # workflow calls this one, the run number is the caller's, which repeats numbers a manual run took.
+          patch="$(git ls-remote --tags --refs origin | awk -F/ -v p="v$base." '
+            index($3, p) == 1 { n = substr($3, length(p) + 1); if (n ~ /^[0-9]+$/ && n + 0 > m) m = n + 0 }
+            END { print m + 1 }')"
+          version="$base.$patch"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
