@@ -14,7 +14,7 @@
     NoTmdbLink: 'No TMDB link',
     NoTmdbPosters: 'No TMDB posters available yet',
     LooksLikeAnotherPoster: 'Every TMDB poster looks the same as one used elsewhere in the show',
-    Pinned: 'Your choice',
+    Pinned: 'Locked: your choice',
     SetOutsidePlugin: 'Set outside this plugin',
   };
   // Filters that are not decision reasons, listed after them in the reason menu.
@@ -429,13 +429,13 @@
   }
 
   function renderShowPoster(show) {
-    if (show.showMode !== 'JellyfinUpload') {
+    if (show.showMode !== 'JellyfinUpload' && !show.showPosterPinned) {
       return make('p', { className: 'show-poster-note', textContent: `${show.showPosterSource ?? 'The main season\'s poster'} is the show poster. Choose "Own show poster" to give the show a poster of its own.` });
     }
 
     const badges = make('div', { className: 'badges' });
     if (show.showPosterNeedsReview) badges.append(make('span', { className: 'badge review', textContent: 'Needs review' }));
-    if (show.showPosterPinned) badges.append(make('span', { className: 'badge', textContent: 'Your choice' }));
+    if (show.showPosterPinned) badges.append(make('span', { className: 'badge locked', textContent: 'Locked', title: 'Your choice. It stays whatever the settings say until you unlock it.' }));
     if (show.showPosterPending) badges.append(make('span', { className: 'badge', textContent: 'Change pending' }));
     badges.append(...lookalikeBadges(show.showPosterLooksLike));
 
@@ -454,7 +454,7 @@
     if (picker) actions.append(picker.toggle);
     actions.append(...uploadButton(`/shows/${encodeURIComponent(show.key)}/poster/upload`));
     if (show.showPosterPinned) {
-      const auto = make('button', { type: 'button', textContent: 'Return to automatic' });
+      const auto = make('button', { type: 'button', textContent: 'Unlock', title: 'Return to automatic: the plugin chooses again' });
       auto.addEventListener('click', () => act(() => call(`/shows/${encodeURIComponent(show.key)}/poster`, { method: 'DELETE' }), 'Saving…'));
       actions.append(auto);
     }
@@ -472,12 +472,12 @@
 
   function renderSpecialsPoster(show) {
     if (!show.hasSpecials) return null;
-    if (show.specialsMode !== 'OwnPoster') {
+    if (show.specialsMode !== 'OwnPoster' && !show.specialsPosterPinned) {
       return make('p', { className: 'show-poster-note', textContent: 'The specials season shows the main season\'s poster. Choose "Own poster" under Specials poster to give it one.' });
     }
 
     const badges = make('div', { className: 'badges' });
-    if (show.specialsPosterPinned) badges.append(make('span', { className: 'badge', textContent: 'Your choice' }));
+    if (show.specialsPosterPinned) badges.append(make('span', { className: 'badge locked', textContent: 'Locked', title: 'Your choice. It stays whatever the settings say until you unlock it.' }));
     if (show.specialsPosterPending) badges.append(make('span', { className: 'badge', textContent: 'Change pending' }));
     badges.append(...lookalikeBadges(show.specialsPosterLooksLike));
 
@@ -498,7 +498,7 @@
     if (picker) actions.append(picker.toggle);
     actions.append(...uploadButton(`${path}/upload`));
     if (show.specialsPosterPinned) {
-      const auto = make('button', { type: 'button', textContent: 'Return to automatic' });
+      const auto = make('button', { type: 'button', textContent: 'Unlock', title: 'Return to automatic: the plugin chooses again' });
       auto.addEventListener('click', () => act(() => call(path, { method: 'DELETE' }), 'Saving…'));
       actions.append(auto);
     }
@@ -525,6 +525,7 @@
 
     const badges = make('div', { className: 'badges' });
     if (series.needsReview) badges.append(make('span', { className: 'badge review', textContent: 'Needs review' }));
+    if (series.reason === 'Pinned') badges.append(make('span', { className: 'badge locked', textContent: 'Locked', title: 'Your choice. It stays whatever the settings say until you unlock it.' }));
     if (series.isMovieType) badges.append(make('span', { className: 'badge', textContent: 'Movie' }));
     if (series.kind) badges.append(make('span', { className: 'badge', textContent: kinds[series.kind] ?? series.kind }));
     if (series.action === 'SetPreferred') badges.append(make('span', { className: 'badge', textContent: 'Change pending' }));
@@ -550,7 +551,9 @@
       actions.append(keep);
     }
     if (series.reason === 'Pinned' || series.reason === 'SetOutsidePlugin') {
-      const auto = make('button', { type: 'button', textContent: 'Return to automatic' });
+      const auto = make('button', series.reason === 'Pinned'
+        ? { type: 'button', textContent: 'Unlock', title: 'Return to automatic: the plugin chooses again' }
+        : { type: 'button', textContent: 'Let the plugin choose', title: 'Hand this poster, set outside the plugin, over to automatic' });
       auto.addEventListener('click', () => act(() => call(`/series/${series.seriesId}/pin`, { method: 'DELETE' }), 'Saving…'));
       actions.append(auto);
     }

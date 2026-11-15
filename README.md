@@ -84,7 +84,7 @@ A Shokofin refresh replaces every image on an item, including an uploaded show p
 
 ### Specials posters
 
-Shoko gives a group only its main series' poster, so Jellyfin and Silo show the specials season with the main season's poster. With **Own poster**, a show with specials on disk gets a specials poster unlike its other posters: TMDB's own specials poster first, then an unused season or movie poster, then a show poster. Another version of artwork already in use is never chosen; with nothing different left, the specials season keeps the main season's poster. It can be chosen, uploaded or returned to automatic on the review page, like the show poster.
+Shoko gives a group only its main series' poster, so Jellyfin and Silo show the specials season with the main season's poster. With **Own poster**, a show with specials on disk gets a specials poster unlike its other posters: TMDB's own specials poster first, then an unused season or movie poster, then a show poster. Another version of artwork already in use is never chosen; with nothing different left, the specials season keeps the main season's poster. It can be chosen, uploaded or unlocked on the review page, like the show poster.
 
 Applying a show lists the specials poster with its show poster for the Silo ShokoAnime plugin, from its version 0.6.0, and uploads it to the show's specials season in Jellyfin when the Jellyfin URL and API key are set. Jellyfin has a specials season only when Shokofin puts specials in one. The **Restore Jellyfin Show Posters** action restores it after a refresh, as it does show posters.
 
@@ -115,12 +115,14 @@ Shokofin and the Silo ShokoAnime plugin show a series' preferred logo, and a gro
 
 The page opens on the entries that need review, and you can filter by reason or search by title. For each entry you can:
 
-- **Keep this poster**, which clears the flag.
+- **Keep this poster**, which clears the flag and locks it.
 - **Choose another poster**, including ones Shoko hasn't downloaded. Those are downloaded when chosen, and their thumbnails load from the source, such as TMDB. The chooser filters by language, including textless, and by source, and marks posters that look like one already used in the show. Clicking a poster opens a larger preview, and **Use this poster** chooses it.
 - **Upload your own.**
-- **Return to automatic**, which also hands over a poster that was set outside this plugin.
+- **Unlock**, which returns the entry to automatic. For a poster set outside this plugin, **Let the plugin choose** hands it over.
 
-Each show starts with a preview of its show poster beside its seasons' posters, as a client lines them up, and lookalikes are outlined. With **Own show poster**, the show poster can be chosen the same way, uploaded, or returned to automatic, and it is applied with the show. The reason filter can also find shows with lookalike posters.
+A poster you keep, choose or upload is **locked**. No setting, language order, lookalike check or later scan replaces it, and the plugin sets it again if something else changes it, until you unlock it.
+
+Each show starts with a preview of its show poster beside its seasons' posters, as a client lines them up, and lookalikes are outlined. The show poster and specials poster can be chosen the same way or uploaded, and are applied with the show. They are locked like season posters: a locked show poster stays the show's own even if the show poster mode changes, and a locked specials poster stays even under **Main season's poster**. The reason filter can also find shows with lookalike posters.
 
 **Apply all** applies every pending change after a second click, and the summary line then reports how many posters were set and uploaded and how many failed. Shoko shows the page in a sandboxed frame that blocks browser dialogs, so the page never uses them.
 

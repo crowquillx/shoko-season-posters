@@ -559,4 +559,56 @@ public class SpecialsAndSiloTests
         Assert.Equal(otherArt.ImageId, plan.JellyfinPosterImageId);
         Assert.False(plan.NeedsReview);
     }
+
+    [Fact]
+    public void LockedShowPosterStaysWhenTheShowPosterModeChanges()
+    {
+        var pinned = Poster(PosterKind.TmdbShow);
+        var series = Series(1, Poster(PosterKind.TmdbSeason), new ShowLink("s", [pinned, Poster(PosterKind.TmdbShow)]), specials: false);
+        foreach (var mode in Enum.GetValues<ShowPosterMode>())
+        {
+            var plan = PosterPlanner.Plan(
+                new ShowFacts("group:1", 1, "Group", 1, [series], SplitSeasonPolicy.AniDbPoster, mode, pinned.ImageId),
+                new PlanOptions(["ja"], 60, ["none"]),
+                NoLookalikes.Instance);
+
+            Assert.Equal(pinned.ImageId, plan.JellyfinPosterImageId);
+            Assert.True(plan.ShowPoster!.IsPinned);
+        }
+    }
+
+    [Fact]
+    public void LockedSpecialsPosterStaysWhenSpecialsAreLeftAloneOrGone()
+    {
+        var pinned = Poster(PosterKind.TmdbSpecials);
+        foreach (var (mode, hasSpecials) in new[] { (SpecialsPosterMode.LeaveAlone, true), (SpecialsPosterMode.OwnPoster, false) })
+        {
+            var plan = Plan([Series(1, Poster(PosterKind.TmdbSeason), new ShowLink("s", [], [pinned]), hasSpecials)], mode: mode, pinned: pinned.ImageId);
+
+            Assert.Equal(pinned.ImageId, plan.SpecialsPosterImageId);
+            Assert.True(plan.SpecialsPoster!.IsPinned);
+            Assert.True(plan.HasSpecials);
+        }
+    }
+
+    [Fact]
+    public void LockedSeasonPosterStaysWhateverTheSettings()
+    {
+        var english = Poster(PosterKind.TmdbSeason);
+        var japanese = new PosterCandidate(Guid.NewGuid(), Guid.NewGuid(), PosterKind.TmdbSeason, "ja", 1000, 1500, 9);
+        var series = new SeriesFacts(1, "Series 1", new DateOnly(2020, 1, 1), false, [new SeasonLink("season-1", 1, 12, "show-1", [english, japanese])], [], [], [], PinnedImageId: english.ImageId);
+        foreach (var languages in new[] { new[] { "en" }, ["ja"], ["none"] })
+        {
+            foreach (var split in Enum.GetValues<SplitSeasonPolicy>())
+            {
+                var plan = PosterPlanner.Plan(
+                    new ShowFacts("group:1", 1, "Group", 1, [series], split, ShowPosterMode.TmdbShowPosterOnMainSeason),
+                    new PlanOptions(languages, 100),
+                    NoLookalikes.Instance);
+
+                Assert.Equal(english.ImageId, plan.Series.Single().ImageId);
+                Assert.Equal(DecisionReason.Pinned, plan.Series.Single().Reason);
+            }
+        }
+    }
 }

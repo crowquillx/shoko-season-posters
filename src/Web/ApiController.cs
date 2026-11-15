@@ -398,13 +398,11 @@ public class ApiController(
             show.JellyfinPosterImageId,
 
             // What clients show for the show: its own poster, or in the other modes the main season's.
-            ShowPosterImageId = show.ShowMode is ShowPosterMode.JellyfinUpload ? show.JellyfinPosterImageId : main?.ImageId,
-            ShowPosterSource = show.ShowMode switch
-            {
-                ShowPosterMode.JellyfinUpload => show.ShowPoster?.Source,
-                _ when main is null => null,
-                _ => $"Shared with {main.Title}",
-            },
+            // A locked show poster is the show's own whatever the mode.
+            ShowPosterImageId = show.ShowMode is ShowPosterMode.JellyfinUpload || show.ShowPoster?.IsPinned == true ? show.JellyfinPosterImageId : main?.ImageId,
+            ShowPosterSource = show.ShowMode is ShowPosterMode.JellyfinUpload || show.ShowPoster?.IsPinned == true
+                ? show.ShowPoster?.Source
+                : main is null ? null : $"Shared with {main.Title}",
             ShowPosterPinned = show.ShowPoster?.IsPinned == true,
             ShowPosterNeedsReview = show.ShowPoster?.NeedsReview == true,
             ShowPosterLooksLike = (show.ShowPoster?.LooksLike ?? []).Select(ToDto),

@@ -66,7 +66,8 @@ public static class PosterPlanner
         Guid? showPosterId = null;
         string? showPosterSource = null;
         var showPosterLooksSame = false;
-        if (show.ShowMode is ShowPosterMode.JellyfinUpload && show.PinnedShowPosterImageId is { } pinnedShowPoster)
+        // A poster chosen on the review page is locked: it stays whatever the settings say, until it is unlocked.
+        if (show.PinnedShowPosterImageId is { } pinnedShowPoster)
         {
             showPosterId = pinnedShowPoster;
             showPosterSource = "Your choice";
@@ -77,7 +78,7 @@ public static class PosterPlanner
         var wantsSpecials = hasSpecials && show.SpecialsMode is SpecialsPosterMode.OwnPoster;
         Guid? specialsPosterId = null;
         string? specialsPosterSource = null;
-        if (wantsSpecials && show.PinnedSpecialsPosterImageId is { } pinnedSpecials)
+        if (show.PinnedSpecialsPosterImageId is { } pinnedSpecials)
         {
             specialsPosterId = pinnedSpecials;
             specialsPosterSource = "Your choice";
@@ -146,11 +147,11 @@ public static class PosterPlanner
             showPoster,
             show.ShowText,
             show.IsSiloOnly,
-            hasSpecials,
+            hasSpecials || specialsPosterId is not null,
             show.SpecialsMode,
             specialsPosterId,
             specialsPoster,
-            hasSpecials ? SpecialsPosterAlternatives(ordered, main, languages, options.ShowPosterLanguages) : []);
+            hasSpecials || specialsPosterId is not null ? SpecialsPosterAlternatives(ordered, main, languages, options.ShowPosterLanguages) : []);
     }
 
     /// <summary>

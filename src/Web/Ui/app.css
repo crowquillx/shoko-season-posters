@@ -63,6 +63,7 @@ button.confirming { outline: 2px solid var(--accent); outline-offset: 2px; }
 .badge.review { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
 .series-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
+.badge.locked { color: var(--accent); border-color: var(--accent); }
 .badge.similar { color: var(--similar); background: var(--similar-bg); border-color: transparent; }
 
 .preview { display: flex; gap: 14px; align-items: flex-end; margin: 12px 0; padding: 12px; border-radius: 6px; background: var(--bg); overflow-x: auto; }
