@@ -4,6 +4,7 @@ using Shoko.Abstractions.Metadata.Containers;
 using Shoko.Abstractions.Metadata.Enums;
 using Shoko.Abstractions.Metadata.Image;
 using Shoko.Abstractions.Metadata.Services;
+using Shoko.SeasonPosters.Imaging;
 using Shoko.SeasonPosters.Jellyfin;
 using Shoko.SeasonPosters.Planning;
 using Shoko.SeasonPosters.Library;
@@ -20,9 +21,17 @@ public sealed class PosterService(
     IImageManager images,
     StateStore store,
     JellyfinShowPosters jellyfin,
+    FingerprintService fingerprints,
     ConfigurationProvider<SeasonPostersConfiguration> configuration,
     ILogger<PosterService> logger)
 {
+    /// <summary>
+    /// Each round fingerprints the posters the last one compared without one. Most shows settle in two or three, and
+    /// a poster still unchecked after the last round counts as different.
+    /// </summary>
+    private const int MaxLookalikeRounds = 6;
+    private const int MaxLookalikeQueries = 300;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private volatile LibraryPlan? _latest;
 
@@ -33,7 +42,7 @@ public sealed class PosterService(
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return Scan();
+            return await ScanCoreAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -55,7 +64,7 @@ public sealed class PosterService(
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var plan = Scan();
+            var plan = await ScanCoreAsync(cancellationToken).ConfigureAwait(false);
             var shows = showKeys is null ? plan.Shows : plan.Shows.Where(show => showKeys.Contains(show.Key)).ToArray();
             var changed = 0;
             var failed = 0;
@@ -70,7 +79,7 @@ public sealed class PosterService(
 
             var showPostersFailed = await RecordShowPostersAsync(shows, cancellationToken).ConfigureAwait(false);
             var (uploaded, uploadFailed) = await jellyfin.SyncAsync(shows, cancellationToken).ConfigureAwait(false);
-            Scan();
+            await ScanCoreAsync(cancellationToken).ConfigureAwait(false);
             logger.LogInformation(
                 "Season Posters applied {Changed} posters ({Failed} failed), recorded show posters ({ShowPostersFailed} could not be downloaded) and uploaded {Uploaded} show posters to Jellyfin ({UploadFailed} failed).",
                 changed, failed, showPostersFailed, uploaded, uploadFailed);
@@ -94,7 +103,7 @@ public sealed class PosterService(
                 return (true, true);
             });
             var applied = await SetPreferredAsync(seriesId, imageId).ConfigureAwait(false);
-            Scan();
+            await ScanCoreAsync(cancellationToken).ConfigureAwait(false);
             return applied;
         }
         finally
@@ -132,7 +141,7 @@ public sealed class PosterService(
                     state.Assigned[seriesId] = current[0].ID;
                 return (true, true);
             });
-            Scan();
+            await ScanCoreAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -152,7 +161,7 @@ public sealed class PosterService(
                 change(settings);
                 return (true, true);
             });
-            Scan();
+            await ScanCoreAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -163,16 +172,87 @@ public sealed class PosterService(
     public Task<(int Uploaded, int Failed)> ReconcileJellyfinAsync(CancellationToken cancellationToken)
         => jellyfin.ReconcileAsync(cancellationToken);
 
-    private LibraryPlan Scan()
+    /// <summary>Stores an uploaded poster and makes it the show's own poster. It is applied with the show.</summary>
+    public Task UploadShowPosterAsync(string showKey, Stream stream, string? contentType, CancellationToken cancellationToken)
+    {
+        var uploaded = images.UploadImage(stream, contentType, userSubmitted: true);
+        return UpdateShowAsync(showKey, settings => settings.PinnedShowPosterImageId = uploaded.ID, cancellationToken);
+    }
+
+    /// <summary>The show poster that was last applied, per show key, so the review page can tell what is pending.</summary>
+    public IReadOnlyDictionary<string, Guid> AppliedShowPosters()
+        => store.Read(state => state.ShowPosters.ToDictionary(pair => pair.Key, pair => pair.Value.ImageId));
+
+    /// <summary>
+    /// Says which posters in use in a show each given image looks like, for the review page's choosers. Images are
+    /// fingerprinted as needed, so this can take a few seconds the first time.
+    /// </summary>
+    /// <param name="showKey">The show the images would be used in.</param>
+    /// <param name="seriesId">The entry being chosen for, which is left out, or null for the show poster.</param>
+    /// <param name="imageIds">The images to check.</param>
+    /// <param name="cancellationToken">Cancels the check.</param>
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Resemblance>>> FindLookalikesAsync(
+        string showKey,
+        int? seriesId,
+        IReadOnlyCollection<Guid> imageIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(imageIds);
+        var plan = (Latest ?? await ScanAsync(cancellationToken).ConfigureAwait(false)).Shows.FirstOrDefault(show => show.Key == showKey);
+        if (plan is null)
+            return new Dictionary<Guid, IReadOnlyList<Resemblance>>();
+
+        var known = plan.Series.SelectMany(series => series.Alternatives)
+            .Concat(plan.ShowPosterAlternatives)
+            .DistinctBy(poster => poster.ImageId)
+            .ToDictionary(poster => poster.ImageId);
+        PosterCandidate Find(Guid id) => known.GetValueOrDefault(id) ?? new PosterCandidate(id, id, PosterKind.Other);
+
+        var inUse = plan.Series
+            .Where(series => series.ImageId is not null && series.SeriesId != seriesId)
+            .Select(series => (Poster: Find(series.ImageId!.Value), UsedBy: series.Title))
+            .ToList();
+        if (seriesId is not null && plan.JellyfinPosterImageId is { } showPoster)
+            inUse.Add((Find(showPoster), "Show poster"));
+
+        var requested = imageIds.Distinct().Take(MaxLookalikeQueries).Select(Find).ToArray();
+        var wanted = requested.Concat(inUse.Select(item => item.Poster))
+            .DistinctBy(poster => poster.UniquenessKey)
+            .ToDictionary(poster => poster.UniquenessKey, poster => poster.ImageId);
+        await fingerprints.AddAsync(wanted, cancellationToken).ConfigureAwait(false);
+
+        // Report every lookalike whatever the setting says, since this only informs a choice.
+        var lookalikes = new FingerprintLookalikes(fingerprints.Find, LookalikePolicy.AvoidSameArtwork);
+        return requested.ToDictionary(
+            poster => poster.ImageId,
+            poster => (IReadOnlyList<Resemblance>)inUse
+                .Select(item => new Resemblance(item.UsedBy, lookalikes.Compare(poster, item.Poster)))
+                .Where(item => item.Likeness is not Likeness.Different)
+                .ToArray());
+    }
+
+    private async Task<LibraryPlan> ScanCoreAsync(CancellationToken cancellationToken)
     {
         var settings = configuration.Load();
-        var languages = PosterRanking.ParseLanguages(settings.PosterLanguages);
+        var options = new PlanOptions(
+            PosterRanking.ParseLanguages(settings.PosterLanguages),
+            settings.MinimumSeasonSharePercent,
+            PosterRanking.ParseLanguages(settings.ShowPosterLanguages));
         var shows = store.Read(library.ReadShows);
-        var plan = new LibraryPlan(
-            DateTimeOffset.UtcNow,
-            shows.Select(show => PosterPlanner.Plan(show, languages, settings.MinimumSeasonSharePercent)).ToArray());
-        _latest = plan;
-        return plan;
+        for (var round = 1; ; round++)
+        {
+            var lookalikes = new FingerprintLookalikes(fingerprints.Find, settings.Lookalikes);
+            var plan = new LibraryPlan(
+                DateTimeOffset.UtcNow,
+                shows.Select(show => PosterPlanner.Plan(show, options, lookalikes)).ToArray());
+            if (lookalikes.Missing.Count == 0
+                || round == MaxLookalikeRounds
+                || await fingerprints.AddAsync(lookalikes.Missing, cancellationToken).ConfigureAwait(false) == 0)
+            {
+                _latest = plan;
+                return plan;
+            }
+        }
     }
 
     /// <summary>

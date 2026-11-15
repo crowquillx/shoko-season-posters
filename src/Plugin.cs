@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Shoko.Abstractions.Plugin;
 using Shoko.Abstractions.Plugin.Models;
 using Shoko.SeasonPosters.Background;
+using Shoko.SeasonPosters.Imaging;
 using Shoko.SeasonPosters.Jellyfin;
 using Shoko.SeasonPosters.Library;
 
@@ -18,7 +19,9 @@ public partial class Plugin : IPlugin<SeasonPostersConfiguration>, IPluginServic
     public static void RegisterServices(IServiceCollection serviceCollection, IApplicationPaths applicationPaths)
     {
         serviceCollection.AddHttpClient<JellyfinClient>();
+        serviceCollection.AddHttpClient(FingerprintService.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
         serviceCollection.AddSingleton<StateStore>();
+        serviceCollection.AddSingleton<FingerprintService>();
         serviceCollection.AddSingleton<ShokoLibrary>();
         serviceCollection.AddSingleton<JellyfinShowPosters>();
         serviceCollection.AddSingleton<PosterService>();

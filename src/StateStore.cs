@@ -12,6 +12,8 @@ public sealed class ShowSettings
     public ShowPosterMode? ShowMode { get; set; }
 
     public Guid? PinnedShowPosterImageId { get; set; }
+
+    public ShowPosterText? ShowText { get; set; }
 }
 
 public sealed class JellyfinUpload

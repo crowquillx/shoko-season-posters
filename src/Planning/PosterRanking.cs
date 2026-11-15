@@ -30,6 +30,17 @@ public static class PosterRanking
             .Select(language => language.ToLowerInvariant())
             .ToArray();
 
+    /// <summary>
+    /// Whether a poster has no text, by its language. TMDB marks textless images with no language; "xx" and "zxx"
+    /// are the codes some sources use for no language.
+    /// </summary>
+    public static bool IsTextless(PosterCandidate candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        return string.IsNullOrWhiteSpace(candidate.Language)
+            || candidate.Language.Trim().ToLowerInvariant() is "none" or "xx" or "zxx";
+    }
+
     private static bool IsPosterShaped(PosterCandidate candidate)
         => candidate is not { Width: > 0, Height: > 0 } || (double)candidate.Width.Value / candidate.Height.Value <= WidestPosterRatio;
 

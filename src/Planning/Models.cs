@@ -29,12 +29,28 @@ public enum ShowPosterMode
     SameAsMainSeason,
 }
 
+/// <summary>Whether the show's own poster should be textless.</summary>
+public enum ShowPosterText
+{
+    /// <summary>Follow the show poster languages, preferring artwork unlike the seasons'.</summary>
+    FollowLanguages,
+
+    /// <summary>
+    /// A textless poster first, even another version of a season's artwork, as long as it does not look the same.
+    /// Textless artwork unlike every season's comes first.
+    /// </summary>
+    TextlessFirst,
+}
+
 public enum PosterKind
 {
     TmdbSeason,
     TmdbMovie,
     TmdbShow,
     AniDb,
+
+    /// <summary>An image that is not one of the entry's own posters, such as an upload.</summary>
+    Other,
 }
 
 public enum DecisionReason
@@ -68,6 +84,9 @@ public enum DecisionReason
 
     /// <summary>The matched TMDB season or movie has no unused posters, often because its data has not downloaded yet.</summary>
     NoTmdbPosters,
+
+    /// <summary>Every unused TMDB poster for the matched season or movie looks like a poster used elsewhere in the show.</summary>
+    LooksLikeAnotherPoster,
 
     /// <summary>A choice made on the review page.</summary>
     Pinned,
@@ -118,7 +137,8 @@ public sealed record ShowFacts(
     IReadOnlyList<SeriesFacts> Series,
     SplitSeasonPolicy SplitPolicy,
     ShowPosterMode ShowMode,
-    Guid? PinnedShowPosterImageId = null);
+    Guid? PinnedShowPosterImageId = null,
+    ShowPosterText ShowText = ShowPosterText.FollowLanguages);
 
 public enum DecisionAction
 {
@@ -132,6 +152,18 @@ public enum DecisionAction
     LeaveAlone,
 }
 
+/// <summary>Another poster in the same show that this one looks like, named by what uses it.</summary>
+public sealed record Resemblance(string UsedBy, Likeness Likeness);
+
+/// <summary>Planning settings that apply to every show.</summary>
+/// <param name="Languages">Season poster languages, best first.</param>
+/// <param name="MinimumSeasonSharePercent">The share of linked episodes that must point at one TMDB season.</param>
+/// <param name="ShowLanguages">Show poster languages, best first. Empty uses <paramref name="Languages"/>.</param>
+public sealed record PlanOptions(IReadOnlyList<string> Languages, int MinimumSeasonSharePercent, IReadOnlyList<string>? ShowLanguages = null)
+{
+    public IReadOnlyList<string> ShowPosterLanguages => ShowLanguages is { Count: > 0 } ? ShowLanguages : Languages;
+}
+
 public sealed record SeriesDecision(
     int SeriesId,
     string Title,
@@ -143,7 +175,8 @@ public sealed record SeriesDecision(
     Guid? ImageId,
     PosterKind? Kind,
     Guid? CurrentPreferredImageId,
-    IReadOnlyList<PosterCandidate> Alternatives);
+    IReadOnlyList<PosterCandidate> Alternatives,
+    IReadOnlyList<Resemblance> LooksLike);
 
 public sealed record ShowPlan(
     string Key,
@@ -154,7 +187,16 @@ public sealed record ShowPlan(
     ShowPosterMode ShowMode,
     Guid? JellyfinPosterImageId,
     IReadOnlyList<SeriesDecision> Series,
-    IReadOnlyList<PosterCandidate> ShowPosterAlternatives)
+    IReadOnlyList<PosterCandidate> ShowPosterAlternatives,
+    ShowPosterChoice? ShowPoster = null,
+    ShowPosterText ShowText = ShowPosterText.FollowLanguages)
 {
-    public bool NeedsReview => Series.Any(item => item.NeedsReview);
+    public bool NeedsReview => Series.Any(item => item.NeedsReview) || ShowPoster?.NeedsReview == true;
 }
+
+/// <summary>Why the show has the own poster it has, for the review page.</summary>
+/// <param name="Source">Where the poster comes from, such as "TMDB show poster".</param>
+/// <param name="IsPinned">Chosen on the review page.</param>
+/// <param name="NeedsReview">Every candidate looked the same as a poster already used in the show.</param>
+/// <param name="LooksLike">The show's other posters that this one looks like.</param>
+public sealed record ShowPosterChoice(string Source, bool IsPinned, bool NeedsReview, IReadOnlyList<Resemblance> LooksLike);

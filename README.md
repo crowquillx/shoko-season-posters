@@ -26,7 +26,7 @@ Early, tested against one real library on Shoko `v6.0.0-dev.588`.
 
 A TV entry owns a shared TMDB season over an OVA or special, even one that aired first. Among entries of the same kind, the earliest owns it.
 
-Posters are ranked by shape, then your language order, then rating, votes and width. No poster is used twice in a show.
+Posters are ranked by shape, then your language order, then rating, votes and width. No poster is used twice in a show, and neither is its [artwork](#lookalike-posters) if anything else will do.
 
 AniDB is the fallback because its poster is the only one known to belong to that exact entry. Once TMDB posters arrive, the next apply replaces a fallback automatically.
 
@@ -50,13 +50,16 @@ These are on the plugin's settings page.
 |---|---|---|
 | Apply automatically | Off | Off: scans only plan. On: scans and detected changes apply their plan. |
 | Poster languages | `en,none,ja` | Language order, best first. `none` means textless or unknown. |
+| Show poster languages | Empty | Language order for the show's own poster. Empty uses the poster languages. |
+| Show poster text | Follow languages | **Textless first** gives the show a textless poster while seasons keep their titles. See [below](#show-posters). |
+| Avoid lookalike posters | Avoid same artwork | See [below](#lookalike-posters). |
 | Logo languages | `en` | Language order for [logos](#logos), best first. Empty leaves logos alone. |
 | Season match threshold | 60% | The share of an entry's linked episodes that must point at one TMDB season. Below this it is flagged. |
 | Split seasons | AniDB poster | See [below](#split-seasons). |
 | Show poster | Own show poster | See [below](#show-posters). |
 | Jellyfin URL and API key | Empty | Only needed to upload own show posters to Jellyfin. |
 
-The split season and show poster settings can also be changed per show on the review page.
+The split season, show poster and show poster text settings can also be changed per show on the review page.
 
 ### Split seasons
 
@@ -70,11 +73,23 @@ When several AniDB entries share one TMDB season, TMDB can't say which poster be
 
 Shokofin reads the show poster and its main season's poster from the same Shoko series, so Shoko alone can't make them differ. A Shoko group's own images are also just its main series' poster.
 
-- **Own show poster:** the season keeps its season poster, and the show gets the TMDB show poster. Applying a show downloads that poster and lists it at `GET /api/plugin/season-posters/show-posters`, which any signed-in user can read. The [Silo ShokoAnime plugin](https://github.com/crowquillx/silo-shoko-plugin) uses that list for its show posters. For Jellyfin, the poster is uploaded straight to the show, which needs the Jellyfin URL and an API key.
+- **Own show poster:** the season keeps its season poster, and the show gets a poster of its own. It is the best TMDB show poster whose artwork no season uses, or else an unused season or movie poster with different artwork. Only when there is none does it use another version of a season's artwork, and a show poster that looks the same as a season's is flagged. Applying a show downloads that poster and lists it at `GET /api/plugin/season-posters/show-posters`, which any signed-in user can read. The [Silo ShokoAnime plugin](https://github.com/crowquillx/silo-shoko-plugin) uses that list for its show posters. For Jellyfin, the poster is uploaded straight to the show, which needs the Jellyfin URL and an API key.
 - **TMDB show poster on main season:** the show and that season share the show poster.
 - **Same as main season:** the show and that season share the season poster.
 
+With **Textless first**, the show poster is textless whenever a textless show, season or movie poster exists. Textless artwork that no season uses comes first, then a textless version of a season's artwork, such as the first season's key art without its title. A textless poster that looks the same as a season's is skipped. Without a textless poster, the order above applies.
+
 A Shokofin refresh replaces every image on an item, including an uploaded show poster. The **Restore Jellyfin Show Posters** action checks every 15 minutes and uploads it again, so a show can briefly lose its poster until the next check.
+
+### Lookalike posters
+
+TMDB often holds one artwork many times over: in each language, textless, or cropped differently. Each is a separate image, so a show poster can look exactly like its first season's. The plugin compares a tiny grayscale copy of each poster it considers, which tolerates different text, crops and zoom.
+
+- **Avoid same artwork:** a season or show takes different artwork when there is some, and another version of artwork already in use only when nothing else is left. A later part of a [split season](#split-seasons) never takes another version of an earlier part's artwork.
+- **Avoid same image only:** only posters that look the same are kept apart, so a textless version counts as different.
+- **Off:** only the image itself counts, as before.
+
+A poster Shoko has not downloaded is compared using a small thumbnail from its source, so checking never downloads it into Shoko. The copies are kept in `fingerprints.json` in the plugin's data folder, which can be deleted at any time. The first scan checks thousands of posters and can take a few minutes; later scans only check new ones. The comparison uses the Magick.NET library that Shoko ships. If it can't be loaded, the plugin logs a warning and only avoids the same image.
 
 ### Logos
 
@@ -90,9 +105,11 @@ Shokofin and the Silo ShokoAnime plugin show a series' preferred logo, and a gro
 The page opens on the entries that need review, and you can filter by reason or search by title. For each entry you can:
 
 - **Keep this poster**, which clears the flag.
-- **Choose another poster**, including ones Shoko hasn't downloaded. Those are downloaded when chosen, and their thumbnails load from the source, such as TMDB.
+- **Choose another poster**, including ones Shoko hasn't downloaded. Those are downloaded when chosen, and their thumbnails load from the source, such as TMDB. The chooser filters by language, including textless, and by source, and marks posters that look like one already used in the show. Clicking a poster opens a larger preview, and **Use this poster** chooses it.
 - **Upload your own.**
 - **Return to automatic**, which also hands over a poster that was set outside this plugin.
+
+Each show starts with a preview of its show poster beside its seasons' posters, as a client lines them up, and lookalikes are outlined. With **Own show poster**, the show poster can be chosen the same way, uploaded, or returned to automatic, and it is applied with the show. The reason filter can also find shows with lookalike posters.
 
 **Apply all** applies every pending change after a second click, and the summary line then reports how many posters were set and uploaded and how many failed. Shoko shows the page in a sandboxed frame that blocks browser dialogs, so the page never uses them.
 
@@ -111,7 +128,7 @@ Changes to TMDB links or groups also start a scan after two quiet minutes.
 
 ## Known limits
 
-- Two TMDB entries can hold the same artwork as separate images, for example a show and its only season. These are compared by image ID, so that isn't detected. Choose another poster on the review page if it bothers you.
+- Lookalike detection judges overall composition. Two different artworks with nearly the same layout and colours could be taken for one, and a heavily reworked version of one artwork can pass as different.
 - Only the own show poster mode can give a show a different poster from its main season, and only Jellyfin and clients that read the show poster list see it. Silo shows the new poster once that show's metadata is refreshed in Silo.
 - The show poster mode that sets the main season assumes Shokofin's default season ordering, where the Shoko main series is the show's default season.
 - TMDB is the only high-resolution source so far.
@@ -124,7 +141,7 @@ You need the .NET 10 SDK.
 dotnet test Shoko.SeasonPosters.slnx -c Release
 ```
 
-The poster decisions are pure functions in `src/Planning`, so most behaviour can be tested without a server. `src/Library` reads from Shoko, `src/Jellyfin` handles uploads, `src/Web` holds the API and review page, and `src/Background` holds the triggers.
+The poster decisions are pure functions in `src/Planning`, so most behaviour can be tested without a server. `src/Library` reads from Shoko, `src/Imaging` makes poster fingerprints, `src/Jellyfin` handles uploads, `src/Web` holds the API and review page, and `src/Background` holds the triggers.
 
 ### Staying current with daily Shoko
 

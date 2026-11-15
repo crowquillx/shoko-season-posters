@@ -16,6 +16,18 @@ public class SeasonPostersConfiguration : IPluginConfiguration
     [DefaultValue("en,none,ja")]
     public string PosterLanguages { get; set; } = "en,none,ja";
 
+    [Display(Name = "Show poster languages", Description = "Comma-separated language codes for the show's own poster, best first. Put \"none\" first for a textless show poster while the seasons keep their titles. Leave empty to use the poster languages.")]
+    [DefaultValue("")]
+    public string ShowPosterLanguages { get; set; } = string.Empty;
+
+    [Display(Name = "Show poster text", Description = "TextlessFirst gives the show's own poster a textless poster whenever there is one, while the seasons keep their titles. Textless artwork unlike every season's comes first, then a textless version of a season's artwork. FollowLanguages uses the show poster languages. Each show can override this.")]
+    [DefaultValue(ShowPosterText.FollowLanguages)]
+    public ShowPosterText ShowPosterText { get; set; } = ShowPosterText.FollowLanguages;
+
+    [Display(Name = "Avoid lookalike posters", Description = "TMDB often holds the same artwork several times: in each language, textless, or cropped differently. AvoidSameArtwork keeps those apart within a show and uses another version only when nothing else is left. AvoidSameImageOnly allows other versions, such as a textless show poster of the first season's artwork. Off only avoids the same image.")]
+    [DefaultValue(LookalikePolicy.AvoidSameArtwork)]
+    public LookalikePolicy Lookalikes { get; set; } = LookalikePolicy.AvoidSameArtwork;
+
     [Display(Name = "Logo languages", Description = "Comma-separated language codes, best first. \"none\" means textless or unknown. Each series gets its best logo in these languages as its preferred logo, unless you picked one in Shoko. A series with no logo in these languages keeps its logo. Leave empty to leave logos alone.")]
     [DefaultValue("en")]
     public string LogoLanguages { get; set; } = "en";

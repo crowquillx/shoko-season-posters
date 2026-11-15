@@ -15,6 +15,9 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Shoko.Abstractions" Version="$(ShokoAbstractionsVersion)" ExcludeAssets="runtime" />
+    <!-- The server ships Magick.NET and plugins load its copy, so only compile against it. Keep this at or below the server's version. -->
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="$(MagickNetVersion)" ExcludeAssets="runtime;native" />
+    <PackageReference Include="Magick.NET.Core" Version="$(MagickNetVersion)" ExcludeAssets="runtime;native" />
     <PackageReference Include="Shoko.BuildTools.Targets" Version="$(ShokoBuildToolsTargetsVersion)" PrivateAssets="All" ExcludeAssets="runtime" />
     <InternalsVisibleTo Include="Shoko.SeasonPosters.Tests" />
     <EmbeddedResource Include="Web/Ui/index.html" LogicalName="ui.index.html" />

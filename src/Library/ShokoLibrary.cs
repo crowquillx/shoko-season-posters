@@ -58,7 +58,8 @@ public sealed class ShokoLibrary(
             series.Select(item => BuildSeries(item, state)).ToArray(),
             overrides?.SplitPolicy ?? settings.SplitSeasons,
             overrides?.ShowMode ?? settings.ShowPoster,
-            overrides?.PinnedShowPosterImageId);
+            overrides?.PinnedShowPosterImageId,
+            overrides?.ShowText ?? settings.ShowPosterText);
     }
 
     private SeriesFacts BuildSeries(IShokoSeries series, PluginState state)
@@ -137,13 +138,7 @@ public sealed class ShokoLibrary(
             image.IsAvailable ? null : RemotePreview(image));
 
     /// <summary>Lets the review page show a poster Shoko has not downloaded, at a size suited to a thumbnail where the source offers one.</summary>
-    private string? RemotePreview(IImage image)
-    {
-        var template = images.GetTemplateUrlForSource(image.Source);
-        return string.IsNullOrEmpty(template) || !template.Contains("{0}", StringComparison.Ordinal)
-            ? null
-            : template.Replace("/original/", "/w342/", StringComparison.Ordinal).Replace("{0}", image.ResourceID, StringComparison.Ordinal);
-    }
+    private string? RemotePreview(IImage image) => RemoteImages.Url(images, image, "w342");
 
     private static DateOnly? AirDate(IShokoSeries series)
         => series.AirDate is { } date && DateOnly.TryParse(date.ToString(), out var parsed) ? parsed : null;
