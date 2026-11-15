@@ -39,6 +39,8 @@ public sealed class SettingsBody
 
     public string? ShowPoster { get; set; }
 
+    public string? SpecialsPoster { get; set; }
+
     public string? JellyfinUrl { get; set; }
 
     /// <summary>A new key. Empty or missing keeps the stored key, since the page never receives it.</summary>
@@ -51,8 +53,11 @@ public sealed class LookalikesBody
 {
     public string ShowKey { get; set; } = string.Empty;
 
-    /// <summary>The entry being chosen for, or null when choosing the show poster.</summary>
+    /// <summary>The entry being chosen for, or null when choosing the show or specials poster.</summary>
     public int? SeriesId { get; set; }
+
+    /// <summary>Whether the specials poster is being chosen.</summary>
+    public bool Specials { get; set; }
 
     public List<Guid> ImageIds { get; set; } = [];
 }
@@ -67,6 +72,8 @@ public sealed class ShowSettingsBody
     public Guid? PinnedShowPosterImageId { get; set; }
 
     public string? ShowText { get; set; }
+
+    public string? SpecialsMode { get; set; }
 }
 
 /// <summary>What the review page calls. Every route is for administrators only.</summary>
@@ -119,13 +126,15 @@ public class ApiController(
         if (!TryParse(body.ShowPosterText, settings.ShowPosterText, out var text)
             || !TryParse(body.Lookalikes, settings.Lookalikes, out var lookalikes)
             || !TryParse(body.SplitSeasons, settings.SplitSeasons, out var split)
-            || !TryParse(body.ShowPoster, settings.ShowPoster, out var mode))
+            || !TryParse(body.ShowPoster, settings.ShowPoster, out var mode)
+            || !TryParse(body.SpecialsPoster, settings.SpecialsPoster, out var specials))
             return BadRequest("Unknown setting value.");
 
         settings.ShowPosterText = text;
         settings.Lookalikes = lookalikes;
         settings.SplitSeasons = split;
         settings.ShowPoster = mode;
+        settings.SpecialsPoster = specials;
 
         var errors = configuration.Validate(settings);
         if (errors.Count > 0)
@@ -220,10 +229,20 @@ public class ApiController(
             text = parsed;
         }
 
+        SpecialsPosterMode? specials = null;
+        if (!string.IsNullOrEmpty(body.SpecialsMode))
+        {
+            if (!Enum.TryParse<SpecialsPosterMode>(body.SpecialsMode, out var parsed))
+                return BadRequest("Unknown specials poster setting.");
+            specials = parsed;
+        }
+
         await posters.UpdateShowAsync(
             showKey,
             settings =>
             {
+                if (body.SpecialsMode is not null)
+                    settings.SpecialsMode = specials;
                 if (body.ShowText is not null)
                     settings.ShowText = text;
                 if (body.SplitPolicy is not null)
@@ -273,12 +292,48 @@ public class ApiController(
         return NoContent();
     }
 
+    /// <summary>Makes an image the show's specials poster. It is applied with the show.</summary>
+    [HttpPut("shows/{showKey}/specials-poster")]
+    public async Task<ActionResult> PinSpecialsPoster([FromRoute] string showKey, [FromBody] PinBody body, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        if (images.GetImageByID(body.ImageId) is null)
+            return NotFound("That image does not exist.");
+
+        await posters.UpdateShowAsync(showKey, settings => settings.PinnedSpecialsPosterImageId = body.ImageId, cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    [HttpPost("shows/{showKey}/specials-poster/upload")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxUploadBytes)]
+    public async Task<ActionResult> UploadSpecialsPoster([FromRoute] string showKey, IFormFile file, CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("The file is empty.");
+        if (!images.AllowedMimeTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
+            return BadRequest("That file type is not an accepted image type.");
+
+        var stream = file.OpenReadStream();
+        await using (stream.ConfigureAwait(false))
+            await posters.UploadSpecialsPosterAsync(showKey, stream, file.ContentType, cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    /// <summary>Lets the plugin choose the specials poster again.</summary>
+    [HttpDelete("shows/{showKey}/specials-poster")]
+    public async Task<NoContentResult> UnpinSpecialsPoster([FromRoute] string showKey, CancellationToken cancellationToken)
+    {
+        await posters.UpdateShowAsync(showKey, settings => settings.PinnedSpecialsPosterImageId = null, cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
     /// <summary>Says which posters in use in the show each image looks like.</summary>
     [HttpPost("lookalikes")]
     public async Task<ContentResult> Lookalikes([FromBody] LookalikesBody body, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
-        var found = await posters.FindLookalikesAsync(body.ShowKey, body.SeriesId, body.ImageIds, cancellationToken).ConfigureAwait(false);
+        var found = await posters.FindLookalikesAsync(body.ShowKey, body.SeriesId, body.Specials, body.ImageIds, cancellationToken).ConfigureAwait(false);
         return JsonResult(new
         {
             Images = found.ToDictionary(
@@ -310,6 +365,7 @@ public class ApiController(
         settings.MinimumSeasonSharePercent,
         SplitSeasons = settings.SplitSeasons.ToString(),
         ShowPoster = settings.ShowPoster.ToString(),
+        SpecialsPoster = settings.SpecialsPoster.ToString(),
         settings.JellyfinUrl,
         JellyfinApiKeySet = !string.IsNullOrWhiteSpace(settings.JellyfinApiKey),
     };
@@ -323,11 +379,11 @@ public class ApiController(
         return new
         {
             plan.CreatedAt,
-            Shows = plan.Shows.Select(show => ToDto(show, applied.TryGetValue(show.Key, out var id) ? id : null)),
+            Shows = plan.Shows.Select(show => ToDto(show, applied.GetValueOrDefault(show.Key))),
         };
     }
 
-    private static object ToDto(ShowPlan show, Guid? appliedShowPoster)
+    private static object ToDto(ShowPlan show, (Guid? Show, Guid? Specials) applied)
     {
         var main = show.Series.FirstOrDefault(series => series.SeriesId == show.MainSeriesId);
         return new
@@ -352,7 +408,16 @@ public class ApiController(
             ShowPosterPinned = show.ShowPoster?.IsPinned == true,
             ShowPosterNeedsReview = show.ShowPoster?.NeedsReview == true,
             ShowPosterLooksLike = (show.ShowPoster?.LooksLike ?? []).Select(ToDto),
-            ShowPosterPending = show.JellyfinPosterImageId is { } planned && planned != appliedShowPoster,
+            ShowPosterPending = show.JellyfinPosterImageId is { } planned && planned != applied.Show,
+            show.IsSiloOnly,
+            show.HasSpecials,
+            SpecialsMode = show.SpecialsMode.ToString(),
+            show.SpecialsPosterImageId,
+            SpecialsPosterSource = show.SpecialsPoster?.Source,
+            SpecialsPosterPinned = show.SpecialsPoster?.IsPinned == true,
+            SpecialsPosterLooksLike = (show.SpecialsPoster?.LooksLike ?? []).Select(ToDto),
+            SpecialsPosterPending = show.SpecialsPosterImageId is { } plannedSpecials && plannedSpecials != applied.Specials,
+            SpecialsPosterAlternatives = (show.SpecialsPosterAlternatives ?? []).Select(ToDto),
             show.NeedsReview,
             ShowPosterAlternatives = show.ShowPosterAlternatives.Select(ToDto),
             Series = show.Series.Select(series => new

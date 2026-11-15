@@ -22,10 +22,11 @@
     'lookalike': 'Looks like another poster in its show',
     'show-review': 'Show poster needs review',
   };
-  const kinds = { TmdbSeason: 'TMDB season', TmdbMovie: 'TMDB movie', TmdbShow: 'TMDB show', AniDb: 'AniDB', Other: 'Other' };
+  const kinds = { TmdbSeason: 'TMDB season', TmdbMovie: 'TMDB movie', TmdbShow: 'TMDB show', TmdbSpecials: 'TMDB specials', AniDb: 'AniDB', Other: 'Other' };
   const splitPolicies = { '': 'Default', AniDbPoster: 'AniDB poster', NextTmdbPoster: 'Next TMDB poster', LeaveForManualChoice: 'Leave for me' };
   const showModes = { '': 'Default', JellyfinUpload: 'Own show poster', TmdbShowPosterOnMainSeason: 'TMDB show poster on main season', SameAsMainSeason: 'Same as main season' };
   const showTexts = { '': 'Default', FollowLanguages: 'Follow languages', TextlessFirst: 'Textless first' };
+  const specialsModes = { '': 'Default', OwnPoster: 'Own poster', LeaveAlone: 'Main season\'s poster' };
 
   const el = {
     summary: document.getElementById('summary'),
@@ -288,7 +289,7 @@
    * A poster chooser with filters and a preview. Builds its posters only when opened, since a library has
    * thousands, and asks the server which posters in the show each one looks like.
    */
-  function chooser({ label, posters, selectedId, showKey, seriesId, title, choose }) {
+  function chooser({ label, posters, selectedId, showKey, seriesId, specials = false, title, choose }) {
     const panel = make('div', { className: 'chooser', hidden: true });
     const toggle = make('button', { type: 'button', textContent: `${label} (${posters.length})`, ariaExpanded: 'false' });
     let built = false;
@@ -351,15 +352,15 @@
         if (shown.length === 0) grid.append(make('p', { textContent: 'No posters match these filters.' }));
       }
 
-      panel.append(
+      panel.append(...[
         languages.length > 1 ? chips('Language', languages) : null,
         sources.length > 1 ? chips('Source', sources, kinds) : null,
         status,
         grid,
-      );
+      ].filter(Boolean));
       draw();
 
-      call('/lookalikes', { method: 'POST', json: { showKey, seriesId, imageIds: posters.map((poster) => poster.imageId) } })
+      call('/lookalikes', { method: 'POST', json: { showKey, seriesId, specials, imageIds: posters.map((poster) => poster.imageId) } })
         .then((result) => {
           lookalikes = result.images;
           const count = Object.values(lookalikes).filter((items) => items.length > 0).length;
@@ -397,6 +398,17 @@
   /** What a client will show: the show poster beside each season's. */
   function renderPreview(show) {
     const showRemote = findPoster(show.showPosterAlternatives, show.showPosterImageId)?.remotePreviewUrl;
+    const main = show.series.find((series) => series.seriesId === show.mainSeriesId) ?? show.series[0];
+    const specialsId = show.specialsPosterImageId ?? main?.imageId;
+    const specialsCard = show.hasSpecials
+      ? previewCard(
+        specialsId,
+        findPoster(show.specialsPosterAlternatives, specialsId)?.remotePreviewUrl ?? findPoster(main?.alternatives ?? [], specialsId)?.remotePreviewUrl,
+        'Specials',
+        show.specialsPosterImageId ? show.specialsPosterSource : 'Shows the main season\'s poster',
+        { lookalike: show.specialsPosterLooksLike.length > 0 || !show.specialsPosterImageId, posters: show.specialsPosterAlternatives },
+      )
+      : null;
     return make(
       'div',
       { className: 'preview' },
@@ -405,6 +417,7 @@
         lookalike: show.showPosterLooksLike.length > 0,
         posters: show.showPosterAlternatives,
       }),
+      specialsCard,
       make('div', { className: 'preview-seasons' }, ...show.series.map((series) => previewCard(
         series.imageId,
         findPoster(series.alternatives, series.imageId)?.remotePreviewUrl,
@@ -451,6 +464,54 @@
       { className: 'show-poster' },
       make('h3', { textContent: 'Show poster' }),
       make('p', { textContent: show.showPosterImageId ? `${show.showPosterSource}. Applied with the show.` : 'No poster of its own yet. Choose or upload one.' }),
+      badges,
+      actions,
+      picker?.panel,
+    );
+  }
+
+  function renderSpecialsPoster(show) {
+    if (!show.hasSpecials) return null;
+    if (show.specialsMode !== 'OwnPoster') {
+      return make('p', { className: 'show-poster-note', textContent: 'The specials season shows the main season\'s poster. Choose "Own poster" under Specials poster to give it one.' });
+    }
+
+    const badges = make('div', { className: 'badges' });
+    if (show.specialsPosterPinned) badges.append(make('span', { className: 'badge', textContent: 'Your choice' }));
+    if (show.specialsPosterPending) badges.append(make('span', { className: 'badge', textContent: 'Change pending' }));
+    badges.append(...lookalikeBadges(show.specialsPosterLooksLike));
+
+    const path = `/shows/${encodeURIComponent(show.key)}/specials-poster`;
+    const actions = make('div', { className: 'series-actions' });
+    const picker = show.specialsPosterAlternatives.length > 0
+      ? chooser({
+        label: 'Choose the specials poster',
+        posters: show.specialsPosterAlternatives,
+        selectedId: show.specialsPosterImageId,
+        showKey: show.key,
+        seriesId: null,
+        specials: true,
+        title: `Specials poster for ${show.title}`,
+        choose: (imageId) => call(path, { method: 'PUT', json: { imageId } }),
+      })
+      : null;
+    if (picker) actions.append(picker.toggle);
+    actions.append(...uploadButton(`${path}/upload`));
+    if (show.specialsPosterPinned) {
+      const auto = make('button', { type: 'button', textContent: 'Return to automatic' });
+      auto.addEventListener('click', () => act(() => call(path, { method: 'DELETE' }), 'Saving…'));
+      actions.append(auto);
+    }
+
+    return make(
+      'div',
+      { className: 'show-poster' },
+      make('h3', { textContent: 'Specials poster' }),
+      make('p', {
+        textContent: show.specialsPosterImageId
+          ? `${show.specialsPosterSource}. Applied with the show.`
+          : 'Nothing unlike the other posters was found, so specials keep the main season\'s poster. Choose or upload one.',
+      }),
       badges,
       actions,
       picker?.panel,
@@ -514,10 +575,15 @@
     const options = make(
       'div',
       { className: 'show-options' },
-      select('Split seasons', splitPolicies, show.splitPolicy, (value) => act(() => saveShow(show, { splitPolicy: value }), 'Saving…')),
+      show.isSiloOnly
+        ? null
+        : select('Split seasons', splitPolicies, show.splitPolicy, (value) => act(() => saveShow(show, { splitPolicy: value }), 'Saving…')),
       select('Show poster', showModes, show.showMode, (value) => act(() => saveShow(show, { showMode: value }), 'Saving…')),
       show.showMode === 'JellyfinUpload'
         ? select('Show poster text', showTexts, show.showText, (value) => act(() => saveShow(show, { showText: value }), 'Saving…'))
+        : null,
+      show.hasSpecials
+        ? select('Specials poster', specialsModes, show.specialsMode, (value) => act(() => saveShow(show, { specialsMode: value }), 'Saving…'))
         : null,
     );
     const applyButton = make('button', { type: 'button', textContent: 'Apply this show' });
@@ -526,11 +592,20 @@
     return make(
       'section',
       { className: 'show' },
-      make('div', { className: 'show-head' }, make('h2', { textContent: show.title }), applyButton),
+      make(
+        'div',
+        { className: 'show-head' },
+        make('h2', {}, show.title, show.isSiloOnly ? make('span', { className: 'badge', textContent: 'Silo only' }) : null),
+        applyButton,
+      ),
+      show.isSiloOnly
+        ? make('p', { className: 'show-poster-note', textContent: 'This group has sub-groups. Jellyfin shows each of its own series as a show of its own, but Silo shows them together as this show. Their season posters are set in their own shows, so only the show and specials posters are chosen here.' })
+        : null,
       options,
       renderPreview(show),
       renderShowPoster(show),
-      ...show.series.map((series) => renderSeries(show, series)),
+      renderSpecialsPoster(show),
+      ...(show.isSiloOnly ? [] : show.series.map((series) => renderSeries(show, series))),
     );
   }
 
@@ -553,7 +628,9 @@
   }
 
   function hasLookalike(show) {
-    return show.showPosterLooksLike.length > 0 || show.series.some((series) => series.looksLike.length > 0);
+    return show.showPosterLooksLike.length > 0
+      || show.specialsPosterLooksLike.length > 0
+      || show.series.some((series) => series.looksLike.length > 0);
   }
 
   function render() {
@@ -572,7 +649,7 @@
     const shows = plan.shows.filter((show) => (!flaggedOnly || show.needsReview) && hasReason(show) && matches(show));
     const allSeries = plan.shows.flatMap((show) => show.series);
     const flagged = plan.shows.filter((show) => show.showPosterNeedsReview).length + allSeries.filter((series) => series.needsReview).length;
-    const pending = allSeries.filter((series) => series.action === 'SetPreferred').length + plan.shows.filter((show) => show.showPosterPending).length;
+    const pending = allSeries.filter((series) => series.action === 'SetPreferred').length + plan.shows.filter((show) => show.showPosterPending).length + plan.shows.filter((show) => show.specialsPosterPending).length;
     updateReasonFilter(allSeries);
     el.summary.textContent = `${plan.shows.length} shows, ${flagged} need review, ${pending} changes pending. Showing ${Math.min(shows.length, visibleCount)} of ${shows.length}.`;
     el.summary.classList.remove('error');
@@ -597,6 +674,10 @@
       help: 'TMDB often holds one artwork in each language, textless or cropped differently. Avoid same artwork keeps those apart within a show when it can.',
     },
     { key: 'showPoster', label: 'Show poster', options: Object.fromEntries(Object.entries(showModes).filter(([value]) => value)), help: 'How the show poster relates to its main season. Each show can override this.' },
+    {
+      key: 'specialsPoster', label: 'Specials poster', options: { OwnPoster: 'Own poster', LeaveAlone: 'Main season\'s poster' },
+      help: 'Own poster gives each show\'s specials season a poster unlike its others: TMDB\'s specials poster first. Clients otherwise show the main season\'s poster. Each show can override this.',
+    },
     { key: 'splitSeasons', label: 'Split seasons', options: Object.fromEntries(Object.entries(splitPolicies).filter(([value]) => value)), help: 'What later parts use when they share a TMDB season or movie with an earlier part. Each show can override this.' },
     { key: 'posterLanguages', label: 'Poster languages', type: 'text', help: 'Comma-separated, best first. "none" means textless or unknown.' },
     { key: 'showPosterLanguages', label: 'Show poster languages', type: 'text', help: 'For the show\'s own poster. Empty uses the poster languages.' },
@@ -702,7 +783,7 @@
     el.apply,
     () => {
       const pending = plan
-        ? plan.shows.flatMap((show) => show.series).filter((series) => series.action === 'SetPreferred').length + plan.shows.filter((show) => show.showPosterPending).length
+        ? plan.shows.flatMap((show) => show.series).filter((series) => series.action === 'SetPreferred').length + plan.shows.filter((show) => show.showPosterPending).length + plan.shows.filter((show) => show.specialsPosterPending).length
         : 0;
       return `Click again to apply ${pending} changes`;
     },

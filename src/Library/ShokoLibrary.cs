@@ -20,11 +20,15 @@ public sealed class ShokoLibrary(
 
     public static string SeriesKey(int seriesId) => $"series:{seriesId}";
 
+    /// <summary>The show Silo makes of a group with sub-groups, from the group's own series.</summary>
+    public static string SiloGroupKey(int groupId) => $"silo-group:{groupId}";
+
     public IShokoSeries? GetSeries(int seriesId) => metadata.GetShokoSeriesByID(seriesId);
 
     /// <summary>
     /// A group with no sub-groups is one show. Shokofin makes each direct series of a group with sub-groups a
-    /// show of its own, so those are standalone here too.
+    /// show of its own, so those are standalone here too. Silo instead makes one show of those series, under the
+    /// group, so that show is planned as well, for Silo only.
     /// </summary>
     public IReadOnlyList<ShowFacts> ReadShows(PluginState state)
     {
@@ -37,6 +41,12 @@ public sealed class ShokoLibrary(
             {
                 foreach (var series in group.Series)
                     shows.Add(BuildShow(SeriesKey(series.LocalID), null, series.Title, series.LocalID, [series], settings, state));
+
+                if (group.Series.Count > 0)
+                {
+                    var main = group.Series.Any(series => series.LocalID == group.MainSeriesID) ? group.MainSeriesID : group.Series[0].LocalID;
+                    shows.Add(BuildShow(SiloGroupKey(group.LocalID), group.LocalID, group.Title, main, group.Series, settings, state, isSiloOnly: true));
+                }
             }
             else if (group.Series.Count > 0)
             {
@@ -47,7 +57,15 @@ public sealed class ShokoLibrary(
         return shows;
     }
 
-    private ShowFacts BuildShow(string key, int? groupId, string title, int mainSeriesId, IReadOnlyList<IShokoSeries> series, SeasonPostersConfiguration settings, PluginState state)
+    private ShowFacts BuildShow(
+        string key,
+        int? groupId,
+        string title,
+        int mainSeriesId,
+        IReadOnlyList<IShokoSeries> series,
+        SeasonPostersConfiguration settings,
+        PluginState state,
+        bool isSiloOnly = false)
     {
         var overrides = state.Shows.GetValueOrDefault(key);
         return new ShowFacts(
@@ -59,7 +77,10 @@ public sealed class ShokoLibrary(
             overrides?.SplitPolicy ?? settings.SplitSeasons,
             overrides?.ShowMode ?? settings.ShowPoster,
             overrides?.PinnedShowPosterImageId,
-            overrides?.ShowText ?? settings.ShowPosterText);
+            overrides?.ShowText ?? settings.ShowPosterText,
+            overrides?.SpecialsMode ?? settings.SpecialsPoster,
+            overrides?.PinnedSpecialsPosterImageId,
+            isSiloOnly);
     }
 
     private SeriesFacts BuildSeries(IShokoSeries series, PluginState state)
@@ -100,7 +121,10 @@ public sealed class ShokoLibrary(
         var shows = series.LinkedSeries
             .Where(show => show.ID.Source == MetadataSource.TMDB)
             .DistinctBy(show => show.ID)
-            .Select(show => new ShowLink(show.ID.ToString(), Posters(show, PosterKind.TmdbShow)))
+            .Select(show => new ShowLink(
+                show.ID.ToString(),
+                Posters(show, PosterKind.TmdbShow),
+                show.Seasons.Where(season => season.SeasonNumber == 0).SelectMany(season => Posters(season, PosterKind.TmdbSpecials)).ToArray()))
             .ToArray();
 
         var current = ((IWithImages)series).GetImages(new() { ImageType = ImageEntityType.Primary, IsPreferred = true, LinkedEntityImages = false });
@@ -116,8 +140,17 @@ public sealed class ShokoLibrary(
             current.Count > 0 ? current[0].ID : null,
             state.Assigned.TryGetValue(series.LocalID, out var assigned) ? assigned : null,
             state.Pins.TryGetValue(series.LocalID, out var pinned) ? pinned : null,
-            series.Type is AnimeType.TV);
+            series.Type is AnimeType.TV,
+            HasSpecials(series));
     }
+
+    /// <summary>
+    /// Whether the series has a file for any episode that is not a regular one. Silo puts all of those in the
+    /// specials season; Jellyfin has one when Shokofin puts specials there.
+    /// </summary>
+    private static bool HasSpecials(IShokoSeries series)
+        => series.LocalEpisodeCounts is { } counts
+            && counts.Specials + counts.Credits + counts.Trailers + counts.Parodies + counts.Others > 0;
 
     private IReadOnlyList<PosterCandidate> Posters(IWithImages entity, PosterKind kind)
         => entity.GetImages(new() { ImageType = ImageEntityType.Primary, IsEnabled = true, LinkedEntityImages = false })

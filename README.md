@@ -52,6 +52,7 @@ Open **Settings** at the top of the **Poster review** page (Shoko's Settings →
 | Poster languages | `en,none,ja` | Language order, best first. `none` means textless or unknown. |
 | Show poster languages | Empty | Language order for the show's own poster. Empty uses the poster languages. |
 | Show poster text | Follow languages | **Textless first** gives the show a textless poster while seasons keep their titles. See [below](#show-posters). |
+| Specials poster | Own poster | See [below](#specials-posters). |
 | Avoid lookalike posters | Avoid same artwork | See [below](#lookalike-posters). |
 | Logo languages | `en` | Language order for [logos](#logos), best first. Empty leaves logos alone. |
 | Season match threshold | 60% | The share of an entry's linked episodes that must point at one TMDB season. Below this it is flagged. |
@@ -59,7 +60,7 @@ Open **Settings** at the top of the **Poster review** page (Shoko's Settings →
 | Show poster | Own show poster | See [below](#show-posters). |
 | Jellyfin URL and API key | Empty | Only needed to upload own show posters to Jellyfin. |
 
-The split season, show poster and show poster text settings can also be changed per show on the review page.
+The split season, show poster, show poster text and specials poster settings can also be changed per show on the review page.
 
 ### Split seasons
 
@@ -80,6 +81,16 @@ Shokofin reads the show poster and its main season's poster from the same Shoko 
 With **Textless first**, the show poster is textless whenever a textless show, season or movie poster exists. Textless artwork that no season uses comes first, then a textless version of a season's artwork, such as the first season's key art without its title. A textless poster that looks the same as a season's is skipped. Without a textless poster, the order above applies.
 
 A Shokofin refresh replaces every image on an item, including an uploaded show poster. The **Restore Jellyfin Show Posters** action checks every 15 minutes and uploads it again, so a show can briefly lose its poster until the next check.
+
+### Specials posters
+
+Shoko gives a group only its main series' poster, so Jellyfin and Silo show the specials season with the main season's poster. With **Own poster**, a show with specials on disk gets a specials poster unlike its other posters: TMDB's own specials poster first, then an unused season or movie poster, then a show poster. Another version of artwork already in use is never chosen; with nothing different left, the specials season keeps the main season's poster. It can be chosen, uploaded or returned to automatic on the review page, like the show poster.
+
+Applying a show lists the specials poster with its show poster for the Silo ShokoAnime plugin, from its version 0.6.0, and uploads it to the show's specials season in Jellyfin when the Jellyfin URL and API key are set. Jellyfin has a specials season only when Shokofin puts specials in one. The **Restore Jellyfin Show Posters** action restores it after a refresh, as it does show posters.
+
+### Groups with sub-groups
+
+Shokofin makes each of a group's own series a show of its own when the group also has sub-groups, and this plugin plans them that way. Silo instead shows those series together as one show, under the group. So such a group is also planned as a show only Silo sees, marked **Silo only** on the review page. Its seasons keep the posters planned in their own shows, and only its show and specials posters are chosen, listed under the group for Silo. It is never uploaded to Jellyfin.
 
 ### Lookalike posters
 

@@ -121,6 +121,33 @@ public sealed class StateStoreTests : IDisposable
         Assert.Equal(2, records.Count);
     }
 
+    [Fact]
+    public void ASpecialsPosterIsRecordedEvenWithoutAShowPoster()
+    {
+        var specials = Guid.NewGuid();
+        var records = new Dictionary<string, AppliedShowPoster>();
+
+        ShowPosterRecords.Update(records, [Show("group:5", 5, null) with { SpecialsPosterImageId = specials }], new HashSet<Guid> { specials });
+
+        Assert.Null(records["group:5"].ImageId);
+        Assert.Equal(specials, records["group:5"].SpecialsImageId);
+    }
+
+    [Fact]
+    public void ASpecialsPosterThatCouldNotBeDownloadedKeepsTheEarlierOne()
+    {
+        var show = Guid.NewGuid();
+        var earlier = Guid.NewGuid();
+        var records = new Dictionary<string, AppliedShowPoster>
+        {
+            ["group:5"] = new() { GroupId = 5, MainSeriesId = 7, ImageId = show, SpecialsImageId = earlier },
+        };
+
+        ShowPosterRecords.Update(records, [Show("group:5", 5, show) with { SpecialsPosterImageId = Guid.NewGuid() }], new HashSet<Guid> { show });
+
+        Assert.Equal(earlier, records["group:5"].SpecialsImageId);
+    }
+
     private static Planning.ShowPlan Show(string key, int? groupId, Guid? showPoster)
         => new(key, groupId, "Show", 7, Planning.SplitSeasonPolicy.AniDbPoster, Planning.ShowPosterMode.JellyfinUpload, showPoster, [], []);
 }

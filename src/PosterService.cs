@@ -179,21 +179,30 @@ public sealed class PosterService(
         return UpdateShowAsync(showKey, settings => settings.PinnedShowPosterImageId = uploaded.ID, cancellationToken);
     }
 
-    /// <summary>The show poster that was last applied, per show key, so the review page can tell what is pending.</summary>
-    public IReadOnlyDictionary<string, Guid> AppliedShowPosters()
-        => store.Read(state => state.ShowPosters.ToDictionary(pair => pair.Key, pair => pair.Value.ImageId));
+    /// <summary>The show and specials posters last applied, per show key, so the review page can tell what is pending.</summary>
+    public IReadOnlyDictionary<string, (Guid? Show, Guid? Specials)> AppliedShowPosters()
+        => store.Read(state => state.ShowPosters.ToDictionary(pair => pair.Key, pair => (pair.Value.ImageId, pair.Value.SpecialsImageId)));
+
+    /// <summary>Stores an uploaded poster and makes it the show's specials poster. It is applied with the show.</summary>
+    public Task UploadSpecialsPosterAsync(string showKey, Stream stream, string? contentType, CancellationToken cancellationToken)
+    {
+        var uploaded = images.UploadImage(stream, contentType, userSubmitted: true);
+        return UpdateShowAsync(showKey, settings => settings.PinnedSpecialsPosterImageId = uploaded.ID, cancellationToken);
+    }
 
     /// <summary>
     /// Says which posters in use in a show each given image looks like, for the review page's choosers. Images are
     /// fingerprinted as needed, so this can take a few seconds the first time.
     /// </summary>
     /// <param name="showKey">The show the images would be used in.</param>
-    /// <param name="seriesId">The entry being chosen for, which is left out, or null for the show poster.</param>
+    /// <param name="seriesId">The entry being chosen for, which is left out, or null for the show or specials poster.</param>
+    /// <param name="specials">Whether the specials poster is being chosen, which is then left out.</param>
     /// <param name="imageIds">The images to check.</param>
     /// <param name="cancellationToken">Cancels the check.</param>
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Resemblance>>> FindLookalikesAsync(
         string showKey,
         int? seriesId,
+        bool specials,
         IReadOnlyCollection<Guid> imageIds,
         CancellationToken cancellationToken)
     {
@@ -204,6 +213,7 @@ public sealed class PosterService(
 
         var known = plan.Series.SelectMany(series => series.Alternatives)
             .Concat(plan.ShowPosterAlternatives)
+            .Concat(plan.SpecialsPosterAlternatives ?? [])
             .DistinctBy(poster => poster.ImageId)
             .ToDictionary(poster => poster.ImageId);
         PosterCandidate Find(Guid id) => known.GetValueOrDefault(id) ?? new PosterCandidate(id, id, PosterKind.Other);
@@ -212,8 +222,11 @@ public sealed class PosterService(
             .Where(series => series.ImageId is not null && series.SeriesId != seriesId)
             .Select(series => (Poster: Find(series.ImageId!.Value), UsedBy: series.Title))
             .ToList();
-        if (seriesId is not null && plan.JellyfinPosterImageId is { } showPoster)
+        var choosingShowPoster = seriesId is null && !specials;
+        if (!choosingShowPoster && plan.JellyfinPosterImageId is { } showPoster)
             inUse.Add((Find(showPoster), "Show poster"));
+        if (!specials && plan.SpecialsPosterImageId is { } specialsPoster)
+            inUse.Add((Find(specialsPoster), "Specials"));
 
         var requested = imageIds.Distinct().Take(MaxLookalikeQueries).Select(Find).ToArray();
         var wanted = requested.Concat(inUse.Select(item => item.Poster))
@@ -242,9 +255,16 @@ public sealed class PosterService(
         for (var round = 1; ; round++)
         {
             var lookalikes = new FingerprintLookalikes(fingerprints.Find, settings.Lookalikes);
-            var plan = new LibraryPlan(
-                DateTimeOffset.UtcNow,
-                shows.Select(show => PosterPlanner.Plan(show, options, lookalikes)).ToArray());
+            var plans = new Dictionary<string, ShowPlan>(StringComparer.Ordinal);
+            foreach (var show in shows.Where(show => !show.IsSiloOnly))
+                plans[show.Key] = PosterPlanner.Plan(show, options, lookalikes);
+
+            // A show only Silo sees keeps the season posters its series got in their own shows.
+            var decided = plans.Values.SelectMany(show => show.Series).GroupBy(series => series.SeriesId).ToDictionary(group => group.Key, group => group.First());
+            foreach (var show in shows.Where(show => show.IsSiloOnly))
+                plans[show.Key] = PosterPlanner.Plan(show, options, lookalikes, decided);
+
+            var plan = new LibraryPlan(DateTimeOffset.UtcNow, shows.Select(show => plans[show.Key]).ToArray());
             if (lookalikes.Missing.Count == 0
                 || round == MaxLookalikeRounds
                 || await fingerprints.AddAsync(lookalikes.Missing, cancellationToken).ConfigureAwait(false) == 0)
@@ -263,7 +283,7 @@ public sealed class PosterService(
     {
         var available = new HashSet<Guid>();
         var failed = 0;
-        foreach (var imageId in shows.Select(show => show.JellyfinPosterImageId).OfType<Guid>().Distinct())
+        foreach (var imageId in shows.SelectMany(show => new[] { show.JellyfinPosterImageId, show.SpecialsPosterImageId }).OfType<Guid>().Distinct())
         {
             cancellationToken.ThrowIfCancellationRequested();
             var image = images.GetImageByID(imageId);

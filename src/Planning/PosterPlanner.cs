@@ -5,6 +5,8 @@ public static class PosterPlanner
 {
     private const string ShowOwner = "show";
     private const string ShowOwnerLabel = "Show poster";
+    private const string SpecialsOwner = "specials";
+    private const string SpecialsOwnerLabel = "Specials";
 
     /// <summary>How many further candidates to queue for fingerprinting when a pick could not be compared yet.</summary>
     private const int Lookahead = 6;
@@ -12,7 +14,14 @@ public static class PosterPlanner
     public static ShowPlan Plan(ShowFacts show, IReadOnlyList<string> languages, int minimumSeasonSharePercent)
         => Plan(show, new PlanOptions(languages, minimumSeasonSharePercent), NoLookalikes.Instance);
 
-    public static ShowPlan Plan(ShowFacts show, PlanOptions options, ILookalikes lookalikes)
+    /// <param name="show">The show to plan.</param>
+    /// <param name="options">Settings for every show.</param>
+    /// <param name="lookalikes">Says which posters look alike.</param>
+    /// <param name="decided">
+    /// For a show only Silo sees, the decisions already made for its series in their own shows. Those posters are kept
+    /// and never applied from this plan.
+    /// </param>
+    public static ShowPlan Plan(ShowFacts show, PlanOptions options, ILookalikes lookalikes, IReadOnlyDictionary<int, SeriesDecision>? decided = null)
     {
         ArgumentNullException.ThrowIfNull(show);
         ArgumentNullException.ThrowIfNull(options);
@@ -29,10 +38,23 @@ public static class PosterPlanner
         foreach (var poster in ordered.SelectMany(AllPosters))
             known.TryAdd(poster.ImageId, poster);
 
+        if (show.IsSiloOnly)
+        {
+            foreach (var series in ordered)
+            {
+                if (decided?.GetValueOrDefault(series.Id) is not { } decision)
+                    continue;
+
+                decisions[series.Id] = decision with { Action = DecisionAction.LeaveAlone, NeedsReview = false, LooksLike = [] };
+                if (decision.ImageId is { } id)
+                    used.Add(known.GetValueOrDefault(id) ?? Unknown(id), Owner(series), series.Title);
+            }
+        }
+
         // Choices the plugin must not override go first, so automatic picks can avoid them.
         foreach (var series in ordered)
         {
-            if (Fixed(series, languages) is { } decision)
+            if (!decisions.ContainsKey(series.Id) && Fixed(series, languages) is { } decision)
             {
                 decisions[series.Id] = decision;
                 if (decision.ImageId is { } id)
@@ -49,6 +71,17 @@ public static class PosterPlanner
             showPosterId = pinnedShowPoster;
             showPosterSource = "Your choice";
             used.Add(known.GetValueOrDefault(pinnedShowPoster) ?? Unknown(pinnedShowPoster), ShowOwner, ShowOwnerLabel);
+        }
+
+        var hasSpecials = ordered.Any(series => series.HasSpecials);
+        var wantsSpecials = hasSpecials && show.SpecialsMode is SpecialsPosterMode.OwnPoster;
+        Guid? specialsPosterId = null;
+        string? specialsPosterSource = null;
+        if (wantsSpecials && show.PinnedSpecialsPosterImageId is { } pinnedSpecials)
+        {
+            specialsPosterId = pinnedSpecials;
+            specialsPosterSource = "Your choice";
+            used.Add(known.GetValueOrDefault(pinnedSpecials) ?? Unknown(pinnedSpecials), SpecialsOwner, SpecialsOwnerLabel);
         }
 
         if (show.ShowMode is ShowPosterMode.TmdbShowPosterOnMainSeason && main is not null && !decisions.ContainsKey(main.Id))
@@ -82,9 +115,24 @@ public static class PosterPlanner
             }
         }
 
+        // Specials come last: they are the least prominent, so every season and the show keep their picks.
+        if (wantsSpecials && specialsPosterId is null)
+        {
+            var (poster, source) = ChooseSpecialsPoster(ordered, main, languages, options.ShowPosterLanguages, used, lookalikes);
+            if (poster is not null)
+            {
+                specialsPosterId = poster.ImageId;
+                specialsPosterSource = source;
+                used.Add(poster, SpecialsOwner, SpecialsOwnerLabel);
+            }
+        }
+
         var showPoster = showPosterSource is null
             ? null
-            : Annotate(new ShowPosterChoice(showPosterSource, show.PinnedShowPosterImageId is not null, showPosterLooksSame, []), used);
+            : Annotate(new ShowPosterChoice(showPosterSource, show.PinnedShowPosterImageId is not null, showPosterLooksSame, []), ShowOwner, used);
+        var specialsPoster = specialsPosterSource is null
+            ? null
+            : Annotate(new ShowPosterChoice(specialsPosterSource, show.PinnedSpecialsPosterImageId is not null, false, []), SpecialsOwner, used);
         return new ShowPlan(
             show.Key,
             show.GroupId,
@@ -96,7 +144,13 @@ public static class PosterPlanner
             ordered.Select(series => Annotate(series, decisions[series.Id], used)).ToArray(),
             ShowPosterAlternatives(ordered, main, options.ShowPosterLanguages),
             showPoster,
-            show.ShowText);
+            show.ShowText,
+            show.IsSiloOnly,
+            hasSpecials,
+            show.SpecialsMode,
+            specialsPosterId,
+            specialsPoster,
+            hasSpecials ? SpecialsPosterAlternatives(ordered, main, languages, options.ShowPosterLanguages) : []);
     }
 
     /// <summary>
@@ -264,6 +318,46 @@ public static class PosterPlanner
     }
 
     /// <summary>
+    /// Gives the specials season a poster unlike any other in the show: TMDB's own specials poster, then an unused
+    /// season or movie poster, then a show poster. With nothing different left it gets none, and clients keep showing
+    /// the main season's poster for it.
+    /// </summary>
+    private static (PosterCandidate? Poster, string Source) ChooseSpecialsPoster(
+        IReadOnlyList<SeriesFacts> ordered,
+        SeriesFacts? main,
+        IReadOnlyList<string> languages,
+        IReadOnlyList<string> showLanguages,
+        UsedPosters used,
+        ILookalikes lookalikes)
+    {
+        if (Pick(SpecialsPosters(ordered, main, languages), used, lookalikes, Likeness.Different) is { } specials)
+            return (specials, "TMDB specials poster");
+
+        var spare = PosterRanking.Rank(SparePosters(ordered).Select(item => item.Poster), languages);
+        if (Pick(spare, used, lookalikes, Likeness.Different) is { } distinctSpare)
+            return (distinctSpare, $"Unused poster of {SparePosters(ordered).First(item => item.Poster.ImageId == distinctSpare.ImageId).Series.Title}");
+
+        return Pick(ShowPosters(ordered, main, showLanguages), used, lookalikes, Likeness.Different) is { } show
+            ? (show, "TMDB show poster")
+            : (null, string.Empty);
+    }
+
+    private static IReadOnlyList<PosterCandidate> SpecialsPosters(IReadOnlyList<SeriesFacts> ordered, SeriesFacts? main, IReadOnlyList<string> languages)
+    {
+        var sources = main is null ? ordered : [main, .. ordered.Where(series => series.Id != main.Id)];
+        return sources
+            .SelectMany(series => PosterRanking.Rank(series.Shows.SelectMany(link => link.SpecialsPosters ?? []), languages))
+            .DistinctBy(poster => poster.UniquenessKey)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<PosterCandidate> SpecialsPosterAlternatives(IReadOnlyList<SeriesFacts> ordered, SeriesFacts? main, IReadOnlyList<string> languages, IReadOnlyList<string> showLanguages)
+        => SpecialsPosters(ordered, main, languages)
+            .Concat(ShowPosterAlternatives(ordered, main, showLanguages))
+            .DistinctBy(poster => poster.UniquenessKey)
+            .ToArray();
+
+    /// <summary>
     /// Returns the best untaken poster that looks unlike every poster in use, or failing that the best one that looks
     /// no more alike than <paramref name="worstAccepted"/>.
     /// </summary>
@@ -337,9 +431,9 @@ public static class PosterPlanner
         return decision with { LooksLike = looksLike, NeedsReview = decision.NeedsReview || (looksSame && !chosenOnPurpose) };
     }
 
-    private static ShowPosterChoice Annotate(ShowPosterChoice choice, UsedPosters used)
+    private static ShowPosterChoice Annotate(ShowPosterChoice choice, string owner, UsedPosters used)
     {
-        var looksLike = used.ResemblancesOf(ShowOwner);
+        var looksLike = used.ResemblancesOf(owner);
         var looksSame = looksLike.Any(item => item.Likeness is Likeness.SameImage);
         return choice with { LooksLike = looksLike, NeedsReview = choice.NeedsReview || (looksSame && !choice.IsPinned) };
     }
@@ -352,6 +446,7 @@ public static class PosterPlanner
         => series.Seasons.SelectMany(season => season.Posters)
             .Concat(series.Movies.SelectMany(movie => movie.Posters))
             .Concat(series.Shows.SelectMany(link => link.Posters))
+            .Concat(series.Shows.SelectMany(link => link.SpecialsPosters ?? []))
             .Concat(series.AniDbPosters);
 
     private static IReadOnlyList<PosterCandidate> Alternatives(SeriesFacts series, IReadOnlyList<string> languages)

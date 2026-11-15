@@ -24,6 +24,10 @@ public class SeasonPostersConfiguration : IPluginConfiguration
     [DefaultValue(ShowPosterText.FollowLanguages)]
     public ShowPosterText ShowPosterText { get; set; } = ShowPosterText.FollowLanguages;
 
+    [Display(Name = "Specials poster", Description = "OwnPoster gives each show's specials season a poster unlike its other posters: TMDB's specials poster first, then an unused season, movie or show poster. LeaveAlone keeps the main season's poster, which clients show by default. Each show can override this.")]
+    [DefaultValue(SpecialsPosterMode.OwnPoster)]
+    public SpecialsPosterMode SpecialsPoster { get; set; } = SpecialsPosterMode.OwnPoster;
+
     [Display(Name = "Avoid lookalike posters", Description = "TMDB often holds the same artwork several times: in each language, textless, or cropped differently. AvoidSameArtwork keeps those apart within a show and uses another version only when nothing else is left. AvoidSameImageOnly allows other versions, such as a textless show poster of the first season's artwork. Off only avoids the same image.")]
     [DefaultValue(LookalikePolicy.AvoidSameArtwork)]
     public LookalikePolicy Lookalikes { get; set; } = LookalikePolicy.AvoidSameArtwork;

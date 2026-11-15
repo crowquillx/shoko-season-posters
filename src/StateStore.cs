@@ -14,6 +14,10 @@ public sealed class ShowSettings
     public Guid? PinnedShowPosterImageId { get; set; }
 
     public ShowPosterText? ShowText { get; set; }
+
+    public SpecialsPosterMode? SpecialsMode { get; set; }
+
+    public Guid? PinnedSpecialsPosterImageId { get; set; }
 }
 
 public sealed class JellyfinUpload
@@ -26,14 +30,19 @@ public sealed class JellyfinUpload
     public required string Tag { get; set; }
 }
 
-/// <summary>A show's own poster, recorded when the show was applied, for clients that read show posters from Shoko.</summary>
+/// <summary>
+/// A show's own poster and its specials season's poster, recorded when the show was applied, for clients that read
+/// them from Shoko. Either can be missing.
+/// </summary>
 public sealed class AppliedShowPoster
 {
     public int? GroupId { get; set; }
 
     public required int MainSeriesId { get; set; }
 
-    public required Guid ImageId { get; set; }
+    public Guid? ImageId { get; set; }
+
+    public Guid? SpecialsImageId { get; set; }
 }
 
 public sealed class PluginState
@@ -60,33 +69,43 @@ public sealed class PluginState
 internal static class ShowPosterRecords
 {
     /// <summary>
-    /// Records the applied shows' own posters. A show without its own poster is forgotten. A show whose poster could
-    /// not be downloaded keeps its earlier record, since that image is still on disk.
+    /// Records the applied shows' own posters and specials posters. A show with neither is forgotten. A poster that
+    /// could not be downloaded keeps its earlier record, since that image is still on disk.
     /// </summary>
     public static bool Update(Dictionary<string, AppliedShowPoster> records, IEnumerable<ShowPlan> shows, IReadOnlySet<Guid> available)
     {
         var changed = false;
         foreach (var show in shows)
         {
-            if (show.JellyfinPosterImageId is not { } imageId)
+            records.TryGetValue(show.Key, out var current);
+            var showPoster = Keep(show.JellyfinPosterImageId, current?.ImageId, available);
+            var specialsPoster = Keep(show.SpecialsPosterImageId, current?.SpecialsImageId, available);
+            if (showPoster is null && specialsPoster is null)
             {
                 changed |= records.Remove(show.Key);
                 continue;
             }
 
-            if (!available.Contains(imageId))
+            if (current is not null && current.ImageId == showPoster && current.SpecialsImageId == specialsPoster
+                && current.GroupId == show.GroupId && current.MainSeriesId == show.MainSeriesId)
                 continue;
 
-            if (records.TryGetValue(show.Key, out var current)
-                && current.ImageId == imageId && current.GroupId == show.GroupId && current.MainSeriesId == show.MainSeriesId)
-                continue;
-
-            records[show.Key] = new AppliedShowPoster { GroupId = show.GroupId, MainSeriesId = show.MainSeriesId, ImageId = imageId };
+            records[show.Key] = new AppliedShowPoster
+            {
+                GroupId = show.GroupId,
+                MainSeriesId = show.MainSeriesId,
+                ImageId = showPoster,
+                SpecialsImageId = specialsPoster,
+            };
             changed = true;
         }
 
         return changed;
     }
+
+    /// <summary>The planned poster once it is on disk, the recorded one until then, and none when none is planned.</summary>
+    private static Guid? Keep(Guid? planned, Guid? recorded, IReadOnlySet<Guid> available)
+        => planned is not { } id ? null : available.Contains(id) ? id : recorded;
 }
 
 /// <summary>Keeps the state file in the plugin's data folder, which the server includes in its own backups.</summary>

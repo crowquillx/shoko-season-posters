@@ -429,3 +429,134 @@ public class LookalikePlanningTests
         Assert.Equal(Likeness.Different, new FingerprintLookalikes(Find, LookalikePolicy.Off).Compare(first, second));
     }
 }
+
+public class SpecialsAndSiloTests
+{
+    private static readonly string[] Languages = ["en", "none", "ja"];
+
+    private sealed class Lookalikes : ILookalikes
+    {
+        private readonly HashSet<(Guid, Guid)> _same = [];
+
+        public Lookalikes Same(PosterCandidate first, PosterCandidate second)
+        {
+            _same.Add((first.UniquenessKey, second.UniquenessKey));
+            _same.Add((second.UniquenessKey, first.UniquenessKey));
+            return this;
+        }
+
+        public Likeness Compare(PosterCandidate first, PosterCandidate second)
+            => first.UniquenessKey == second.UniquenessKey ? Likeness.SameImage
+                : _same.Contains((first.UniquenessKey, second.UniquenessKey)) ? Likeness.SameArtwork : Likeness.Different;
+
+        public bool IsKnown(PosterCandidate poster) => true;
+    }
+
+    private static PosterCandidate Poster(PosterKind kind, double rating = 5)
+    {
+        var id = Guid.NewGuid();
+        return new PosterCandidate(id, id, kind, "en", 1000, 1500, rating);
+    }
+
+    private static SeriesFacts Series(int id, PosterCandidate season, ShowLink? show = null, bool specials = true)
+        => new(id, $"Series {id}", new DateOnly(2020 + id, 1, 1), false, [new SeasonLink($"season-{id}", id, 12, "show-1", [season])], [], show is null ? [] : [show], [], HasSpecials: specials);
+
+    private static ShowPlan Plan(IReadOnlyList<SeriesFacts> series, ILookalikes? lookalikes = null, SpecialsPosterMode mode = SpecialsPosterMode.OwnPoster, Guid? pinned = null, bool siloOnly = false, IReadOnlyDictionary<int, SeriesDecision>? decided = null)
+        => PosterPlanner.Plan(
+            new ShowFacts("group:1", 1, "Group", series[0].Id, series, SplitSeasonPolicy.AniDbPoster, ShowPosterMode.JellyfinUpload, null, ShowPosterText.FollowLanguages, mode, pinned, siloOnly),
+            new PlanOptions(Languages, 60),
+            lookalikes ?? NoLookalikes.Instance,
+            decided);
+
+    [Fact]
+    public void SpecialsGetTmdbsSpecialsPoster()
+    {
+        var specials = Poster(PosterKind.TmdbSpecials);
+        var plan = Plan([Series(1, Poster(PosterKind.TmdbSeason), new ShowLink("s", [Poster(PosterKind.TmdbShow)], [specials]))]);
+
+        Assert.True(plan.HasSpecials);
+        Assert.Equal(specials.ImageId, plan.SpecialsPosterImageId);
+        Assert.Equal("TMDB specials poster", plan.SpecialsPoster!.Source);
+    }
+
+    [Fact]
+    public void SpecialsAvoidASpecialsPosterWithTheFirstSeasonsArtwork()
+    {
+        var season = Poster(PosterKind.TmdbSeason);
+        var reused = Poster(PosterKind.TmdbSpecials, rating: 9);
+        var showPoster = Poster(PosterKind.TmdbShow, rating: 9);
+        var otherShowPoster = Poster(PosterKind.TmdbShow, rating: 2);
+        var plan = Plan(
+            [Series(1, season, new ShowLink("s", [showPoster, otherShowPoster], [reused]))],
+            new Lookalikes().Same(season, reused));
+
+        Assert.Equal(showPoster.ImageId, plan.JellyfinPosterImageId);
+        Assert.Equal(otherShowPoster.ImageId, plan.SpecialsPosterImageId);
+    }
+
+    [Fact]
+    public void SpecialsGetNothingRatherThanALookalike()
+    {
+        var season = Poster(PosterKind.TmdbSeason);
+        var specials = Poster(PosterKind.TmdbSpecials);
+        var plan = Plan([Series(1, season, new ShowLink("s", [], [specials]))], new Lookalikes().Same(season, specials));
+
+        Assert.Null(plan.SpecialsPosterImageId);
+        Assert.Null(plan.SpecialsPoster);
+    }
+
+    [Fact]
+    public void AShowWithoutSpecialsGetsNoSpecialsPoster()
+    {
+        var plan = Plan([Series(1, Poster(PosterKind.TmdbSeason), new ShowLink("s", [], [Poster(PosterKind.TmdbSpecials)]), specials: false)]);
+
+        Assert.False(plan.HasSpecials);
+        Assert.Null(plan.SpecialsPosterImageId);
+    }
+
+    [Fact]
+    public void SpecialsCanBeLeftWithTheMainSeasonsPoster()
+    {
+        var plan = Plan([Series(1, Poster(PosterKind.TmdbSeason), new ShowLink("s", [], [Poster(PosterKind.TmdbSpecials)]))], mode: SpecialsPosterMode.LeaveAlone);
+
+        Assert.Null(plan.SpecialsPosterImageId);
+    }
+
+    [Fact]
+    public void PinnedSpecialsPosterWinsAndKeepsSeasonsOffIt()
+    {
+        var pinned = Poster(PosterKind.TmdbSeason, rating: 9);
+        var other = Poster(PosterKind.TmdbSeason, rating: 2);
+        var series = new SeriesFacts(1, "Series 1", new DateOnly(2020, 1, 1), false, [new SeasonLink("season-1", 1, 12, "show-1", [pinned, other])], [], [], [], HasSpecials: true);
+
+        var plan = Plan([series], pinned: pinned.ImageId);
+
+        Assert.Equal(pinned.ImageId, plan.SpecialsPosterImageId);
+        Assert.True(plan.SpecialsPoster!.IsPinned);
+        Assert.Equal(other.ImageId, plan.Series.Single().ImageId);
+    }
+
+    [Fact]
+    public void SiloOnlyShowKeepsTheSeasonPostersFromTheirOwnShowsAndNeverAppliesThem()
+    {
+        var first = Poster(PosterKind.TmdbSeason);
+        var second = Poster(PosterKind.TmdbSeason);
+        var sameArt = Poster(PosterKind.TmdbShow, rating: 9);
+        var otherArt = Poster(PosterKind.TmdbShow, rating: 2);
+        var link = new ShowLink("s", [sameArt, otherArt]);
+        var series = new[] { Series(1, first, link, specials: false), Series(2, second, link, specials: false) };
+        var decided = series.Select(item => PosterPlanner.Plan(
+                new ShowFacts($"series:{item.Id}", null, item.Title, item.Id, [item], SplitSeasonPolicy.AniDbPoster, ShowPosterMode.JellyfinUpload),
+                new PlanOptions(Languages, 60),
+                NoLookalikes.Instance).Series.Single())
+            .ToDictionary(decision => decision.SeriesId);
+
+        var plan = Plan(series, new Lookalikes().Same(second, sameArt), siloOnly: true, decided: decided);
+
+        Assert.True(plan.IsSiloOnly);
+        Assert.All(plan.Series, decision => Assert.Equal(DecisionAction.LeaveAlone, decision.Action));
+        Assert.Equal([first.ImageId, second.ImageId], plan.Series.Select(decision => decision.ImageId!.Value));
+        Assert.Equal(otherArt.ImageId, plan.JellyfinPosterImageId);
+        Assert.False(plan.NeedsReview);
+    }
+}

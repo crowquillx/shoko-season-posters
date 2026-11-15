@@ -18,13 +18,27 @@ public sealed class JellyfinShowPosters(
     internal const string ShokoGroupProviderId = "Shoko Group";
     internal const string ShokoSeriesProviderId = "Shoko Series";
 
+    /// <summary>The upload record key of a show's specials season poster.</summary>
+    internal static string SpecialsKey(string showKey) => $"{showKey}#specials";
+
+    /// <summary>
+    /// Uploads each show's own poster, and its specials poster to its specials season. Shows only Silo sees are left
+    /// out, since Jellyfin shows their series separately.
+    /// </summary>
     public async Task<(int Uploaded, int Failed)> SyncAsync(IReadOnlyList<ShowPlan> plans, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(plans);
-        foreach (var plan in plans.Where(plan => plan.ShowMode is not ShowPosterMode.JellyfinUpload))
-            Forget(plan.Key);
+        foreach (var plan in plans)
+        {
+            if (plan.IsSiloOnly || plan.JellyfinPosterImageId is null)
+                Forget(plan.Key);
+            if (plan.IsSiloOnly || plan.SpecialsPosterImageId is null)
+                Forget(SpecialsKey(plan.Key));
+        }
 
-        var wanted = plans.Where(plan => plan.JellyfinPosterImageId is not null).ToArray();
+        var wanted = plans
+            .Where(plan => !plan.IsSiloOnly && (plan.JellyfinPosterImageId is not null || plan.SpecialsPosterImageId is not null))
+            .ToArray();
         if (wanted.Length == 0 || !TryGetConnection(out var url, out var key))
             return (0, 0);
 
@@ -54,18 +68,52 @@ public sealed class JellyfinShowPosters(
                 continue;
             }
 
-            var imageId = plan.JellyfinPosterImageId!.Value;
-            var previous = store.Read(state => state.Uploads.GetValueOrDefault(plan.Key));
-            if (previous is not null && previous.ImageId == imageId && previous.ItemId == show.Id && previous.Tag == show.PrimaryTag)
-                continue;
+            if (plan.JellyfinPosterImageId is { } showPoster)
+                Count(await SyncItemAsync(client, url, key, plan.Key, show, showPoster, cancellationToken).ConfigureAwait(false));
 
-            if (await UploadAsync(client, url, key, plan.Key, show.Id, imageId, cancellationToken).ConfigureAwait(false))
-                uploaded++;
-            else
-                failed++;
+            if (plan.SpecialsPosterImageId is { } specialsPoster)
+            {
+                var specials = await FindSpecialsAsync(client, url, key, show, cancellationToken).ConfigureAwait(false);
+                if (specials is null)
+                    logger.LogDebug("Season Posters found no specials season in Jellyfin for {ShowKey}.", plan.Key);
+                else
+                    Count(await SyncItemAsync(client, url, key, SpecialsKey(plan.Key), specials, specialsPoster, cancellationToken).ConfigureAwait(false));
+            }
         }
 
         return (uploaded, failed);
+
+        void Count(bool? result)
+        {
+            if (result == true)
+                uploaded++;
+            else if (result == false)
+                failed++;
+        }
+    }
+
+    /// <summary>Uploads the poster unless Jellyfin already has it. Null means there was nothing to do.</summary>
+    private async Task<bool?> SyncItemAsync(JellyfinClient client, string url, string key, string uploadKey, JellyfinShow item, Guid imageId, CancellationToken cancellationToken)
+    {
+        var previous = store.Read(state => state.Uploads.GetValueOrDefault(uploadKey));
+        if (previous is not null && previous.ImageId == imageId && previous.ItemId == item.Id && previous.Tag == item.PrimaryTag)
+            return null;
+
+        return await UploadAsync(client, url, key, uploadKey, item.Id, imageId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<JellyfinShow?> FindSpecialsAsync(JellyfinClient client, string url, string key, JellyfinShow show, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var seasons = await client.ListSeasonsAsync(url, key, show.Id, cancellationToken).ConfigureAwait(false);
+            return seasons.FirstOrDefault(season => season.IndexNumber == 0);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Season Posters could not list the seasons of Jellyfin show {ItemId}.", show.Id);
+            return null;
+        }
     }
 
     /// <summary>

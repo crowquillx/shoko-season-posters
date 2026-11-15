@@ -5,7 +5,8 @@ using System.Text.Json.Serialization;
 
 namespace Shoko.SeasonPosters.Jellyfin;
 
-public sealed record JellyfinShow(string Id, string Name, IReadOnlyDictionary<string, string> ProviderIds, string? PrimaryTag);
+/// <summary>A Jellyfin show or season. A season's <paramref name="IndexNumber"/> is its number, 0 for specials.</summary>
+public sealed record JellyfinShow(string Id, string Name, IReadOnlyDictionary<string, string> ProviderIds, string? PrimaryTag, int? IndexNumber = null);
 
 /// <summary>The few Jellyfin calls the show poster upload needs.</summary>
 public sealed class JellyfinClient(HttpClient http)
@@ -30,6 +31,13 @@ public sealed class JellyfinClient(HttpClient http)
         var path = $"Items?Ids={Uri.EscapeDataString(itemId)}&Fields=ProviderIds&EnableImageTypes=Primary&EnableUserData=false";
         var page = await GetItemsAsync(baseUrl, apiKey, path, cancellationToken).ConfigureAwait(false);
         return page.Items.Count > 0 ? ToShow(page.Items[0]) : null;
+    }
+
+    public async Task<IReadOnlyList<JellyfinShow>> ListSeasonsAsync(string baseUrl, string apiKey, string showId, CancellationToken cancellationToken)
+    {
+        var path = $"Items?ParentId={Uri.EscapeDataString(showId)}&IncludeItemTypes=Season&Fields=ProviderIds&EnableImageTypes=Primary&EnableUserData=false";
+        var page = await GetItemsAsync(baseUrl, apiKey, path, cancellationToken).ConfigureAwait(false);
+        return page.Items.Select(ToShow).ToArray();
     }
 
     /// <summary>Jellyfin takes a new image as a base64 body, with the image's own type as the content type.</summary>
@@ -63,7 +71,8 @@ public sealed class JellyfinClient(HttpClient http)
             item.Id,
             item.Name ?? string.Empty,
             item.ProviderIds is null ? new Dictionary<string, string>() : new Dictionary<string, string>(item.ProviderIds, StringComparer.OrdinalIgnoreCase),
-            item.ImageTags?.GetValueOrDefault("Primary"));
+            item.ImageTags?.GetValueOrDefault("Primary"),
+            item.IndexNumber);
 
     private sealed class ItemsPage
     {
@@ -84,5 +93,8 @@ public sealed class JellyfinClient(HttpClient http)
 
         [JsonPropertyName("ImageTags")]
         public Dictionary<string, string>? ImageTags { get; set; }
+
+        [JsonPropertyName("IndexNumber")]
+        public int? IndexNumber { get; set; }
     }
 }

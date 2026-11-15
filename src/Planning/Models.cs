@@ -42,12 +42,28 @@ public enum ShowPosterText
     TextlessFirst,
 }
 
+/// <summary>Whether a show's specials season gets a poster of its own.</summary>
+public enum SpecialsPosterMode
+{
+    /// <summary>
+    /// The specials season gets a poster unlike its show's other posters: TMDB's own specials poster first, then an
+    /// unused season, movie or show poster. Clients otherwise show the main season's poster for it.
+    /// </summary>
+    OwnPoster,
+
+    /// <summary>Leave the specials season as clients show it, with the main season's poster.</summary>
+    LeaveAlone,
+}
+
 public enum PosterKind
 {
     TmdbSeason,
     TmdbMovie,
     TmdbShow,
     AniDb,
+
+    /// <summary>A poster of a TMDB show's specials season, season 0.</summary>
+    TmdbSpecials,
 
     /// <summary>An image that is not one of the entry's own posters, such as an upload.</summary>
     Other,
@@ -112,7 +128,8 @@ public sealed record SeasonLink(string Key, int Number, int EpisodeCount, string
 
 public sealed record MovieLink(string Key, string Title, IReadOnlyList<PosterCandidate> Posters);
 
-public sealed record ShowLink(string Key, IReadOnlyList<PosterCandidate> Posters);
+/// <summary>A linked TMDB show, with its own posters and those of its specials season.</summary>
+public sealed record ShowLink(string Key, IReadOnlyList<PosterCandidate> Posters, IReadOnlyList<PosterCandidate>? SpecialsPosters = null);
 
 public sealed record SeriesFacts(
     int Id,
@@ -126,9 +143,15 @@ public sealed record SeriesFacts(
     Guid? CurrentPreferredImageId = null,
     Guid? PluginAssignedImageId = null,
     Guid? PinnedImageId = null,
-    bool IsTvType = true);
+    bool IsTvType = true,
+    bool HasSpecials = false);
 
-/// <summary>One Jellyfin show: a Shoko group, or a series that Shokofin makes standalone.</summary>
+/// <summary>
+/// One show: a Shoko group, or a series that Shokofin makes standalone. Shokofin makes each direct series of a group
+/// with sub-groups a show of its own, but Silo makes them one show of the group, so those groups are also planned as
+/// a show only Silo sees, marked <paramref name="IsSiloOnly"/>. Its seasons keep the posters planned for their own
+/// shows, and only its show and specials posters are chosen.
+/// </summary>
 public sealed record ShowFacts(
     string Key,
     int? GroupId,
@@ -138,7 +161,10 @@ public sealed record ShowFacts(
     SplitSeasonPolicy SplitPolicy,
     ShowPosterMode ShowMode,
     Guid? PinnedShowPosterImageId = null,
-    ShowPosterText ShowText = ShowPosterText.FollowLanguages);
+    ShowPosterText ShowText = ShowPosterText.FollowLanguages,
+    SpecialsPosterMode SpecialsMode = SpecialsPosterMode.OwnPoster,
+    Guid? PinnedSpecialsPosterImageId = null,
+    bool IsSiloOnly = false);
 
 public enum DecisionAction
 {
@@ -189,7 +215,13 @@ public sealed record ShowPlan(
     IReadOnlyList<SeriesDecision> Series,
     IReadOnlyList<PosterCandidate> ShowPosterAlternatives,
     ShowPosterChoice? ShowPoster = null,
-    ShowPosterText ShowText = ShowPosterText.FollowLanguages)
+    ShowPosterText ShowText = ShowPosterText.FollowLanguages,
+    bool IsSiloOnly = false,
+    bool HasSpecials = false,
+    SpecialsPosterMode SpecialsMode = SpecialsPosterMode.OwnPoster,
+    Guid? SpecialsPosterImageId = null,
+    ShowPosterChoice? SpecialsPoster = null,
+    IReadOnlyList<PosterCandidate>? SpecialsPosterAlternatives = null)
 {
     public bool NeedsReview => Series.Any(item => item.NeedsReview) || ShowPoster?.NeedsReview == true;
 }
