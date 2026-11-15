@@ -15,6 +15,24 @@
   "is_meta": false,
   "releases": [
     {
+      "version": "0.1.8",
+      "tag": "v0.1.8",
+      "released_at": "2026-11-15T21:19:06.107272Z",
+      "channel": "Dev",
+      "is_meta": false,
+      "dependencies": [],
+      "archives": [
+        {
+          "runtime": "any",
+          "abstraction": "6.0.0",
+          "url": "https://github.com/crowquillx/shoko-season-posters/releases/download/v0.1.8/Shoko.SeasonPosters-v0.1.8.zip",
+          "checksum": "sha256:92d44fd36e1e9a4e163b8d019010f7aef30a40216264cddb8c7222b869cd8807",
+          "packed_size": 137648,
+          "unpacked_size": 357199
+        }
+      ]
+    },
+    {
       "version": "0.1.7",
       "tag": "v0.1.7",
       "released_at": "2026-11-15T20:52:48.2187079Z",
