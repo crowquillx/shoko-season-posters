@@ -44,7 +44,7 @@ Nothing changes until you press Apply, unless you turn on **Apply automatically*
 
 ## Settings
 
-These are on the plugin's settings page.
+Open **Settings** at the top of the **Poster review** page (Shoko's Settings → Plugins → Season Posters → Poster review). Shoko's web UI only shows settings forms for providers and renamers, so this plugin's settings live on its own page. Saving scans again with the new settings. The Jellyfin API key is never shown again once saved.
 
 | Setting | Default | What it does |
 |---|---|---|

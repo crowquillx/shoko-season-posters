@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Shoko.Abstractions.Config;
 using Shoko.Abstractions.Metadata.Services;
 using Shoko.SeasonPosters.Planning;
 
@@ -15,6 +16,35 @@ public sealed class PinBody
 public sealed class ApplyBody
 {
     public List<string>? ShowKeys { get; set; }
+}
+
+/// <summary>The plugin's settings, for the review page. A missing field stays as it is.</summary>
+public sealed class SettingsBody
+{
+    public bool? AutoApply { get; set; }
+
+    public string? PosterLanguages { get; set; }
+
+    public string? ShowPosterLanguages { get; set; }
+
+    public string? ShowPosterText { get; set; }
+
+    public string? Lookalikes { get; set; }
+
+    public string? LogoLanguages { get; set; }
+
+    public int? MinimumSeasonSharePercent { get; set; }
+
+    public string? SplitSeasons { get; set; }
+
+    public string? ShowPoster { get; set; }
+
+    public string? JellyfinUrl { get; set; }
+
+    /// <summary>A new key. Empty or missing keeps the stored key, since the page never receives it.</summary>
+    public string? JellyfinApiKey { get; set; }
+
+    public bool? ClearJellyfinApiKey { get; set; }
 }
 
 public sealed class LookalikesBody
@@ -43,7 +73,11 @@ public sealed class ShowSettingsBody
 [ApiController]
 [Authorize("admin")]
 [Route("api/plugin/season-posters")]
-public class ApiController(PosterService posters, LogoService logos, IImageManager images) : ControllerBase
+public class ApiController(
+    PosterService posters,
+    LogoService logos,
+    IImageManager images,
+    ConfigurationProvider<SeasonPostersConfiguration> configuration) : ControllerBase
 {
     private const long MaxUploadBytes = 50 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -51,6 +85,56 @@ public class ApiController(PosterService posters, LogoService logos, IImageManag
     [HttpGet("plan")]
     public async Task<ContentResult> GetPlan(CancellationToken cancellationToken)
         => JsonResult(ToDto(posters.Latest ?? await posters.ScanAsync(cancellationToken).ConfigureAwait(false)));
+
+    /// <summary>
+    /// The plugin's settings. Shoko's web UI has no settings form for plugins that are not providers, so the review
+    /// page edits them. The Jellyfin API key is never sent back, only whether one is stored.
+    /// </summary>
+    [HttpGet("settings")]
+    public ContentResult GetSettings() => JsonResult(ToDto(configuration.Load()));
+
+    /// <summary>Saves the settings. Scan again afterwards to plan with them.</summary>
+    [HttpPut("settings")]
+    public ActionResult SaveSettings([FromBody] SettingsBody body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        var settings = configuration.Load(copy: true);
+        if (body.AutoApply is { } autoApply)
+            settings.AutoApply = autoApply;
+        if (body.PosterLanguages is not null)
+            settings.PosterLanguages = body.PosterLanguages.Trim();
+        if (body.ShowPosterLanguages is not null)
+            settings.ShowPosterLanguages = body.ShowPosterLanguages.Trim();
+        if (body.LogoLanguages is not null)
+            settings.LogoLanguages = body.LogoLanguages.Trim();
+        if (body.MinimumSeasonSharePercent is { } share)
+            settings.MinimumSeasonSharePercent = share;
+        if (body.JellyfinUrl is not null)
+            settings.JellyfinUrl = body.JellyfinUrl.Trim();
+        if (body.ClearJellyfinApiKey == true)
+            settings.JellyfinApiKey = null;
+        else if (!string.IsNullOrWhiteSpace(body.JellyfinApiKey))
+            settings.JellyfinApiKey = body.JellyfinApiKey.Trim();
+
+        if (!TryParse(body.ShowPosterText, settings.ShowPosterText, out var text)
+            || !TryParse(body.Lookalikes, settings.Lookalikes, out var lookalikes)
+            || !TryParse(body.SplitSeasons, settings.SplitSeasons, out var split)
+            || !TryParse(body.ShowPoster, settings.ShowPoster, out var mode))
+            return BadRequest("Unknown setting value.");
+
+        settings.ShowPosterText = text;
+        settings.Lookalikes = lookalikes;
+        settings.SplitSeasons = split;
+        settings.ShowPoster = mode;
+
+        var errors = configuration.Validate(settings);
+        if (errors.Count > 0)
+            return BadRequest(string.Join(" ", errors.Select(pair => $"{pair.Key}: {string.Join(", ", pair.Value)}")));
+
+        return configuration.Save(settings)
+            ? Content(JsonSerializer.Serialize(ToDto(settings), Json), "application/json")
+            : Problem("The settings could not be saved. Check the server log.");
+    }
 
     [HttpPost("scan")]
     public async Task<ContentResult> Scan(CancellationToken cancellationToken)
@@ -202,6 +286,33 @@ public class ApiController(PosterService posters, LogoService logos, IImageManag
                 pair => pair.Value.Select(item => new { item.UsedBy, Likeness = item.Likeness.ToString() })),
         });
     }
+
+    private static bool TryParse<T>(string? value, T current, out T parsed)
+        where T : struct, Enum
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            parsed = current;
+            return true;
+        }
+
+        return Enum.TryParse(value, out parsed) && Enum.IsDefined(parsed);
+    }
+
+    private static object ToDto(SeasonPostersConfiguration settings) => new
+    {
+        settings.AutoApply,
+        settings.PosterLanguages,
+        settings.ShowPosterLanguages,
+        ShowPosterText = settings.ShowPosterText.ToString(),
+        Lookalikes = settings.Lookalikes.ToString(),
+        settings.LogoLanguages,
+        settings.MinimumSeasonSharePercent,
+        SplitSeasons = settings.SplitSeasons.ToString(),
+        ShowPoster = settings.ShowPoster.ToString(),
+        settings.JellyfinUrl,
+        JellyfinApiKeySet = !string.IsNullOrWhiteSpace(settings.JellyfinApiKey),
+    };
 
     private ContentResult JsonResult<T>(T value)
         => Content(JsonSerializer.Serialize(value, Json), "application/json");

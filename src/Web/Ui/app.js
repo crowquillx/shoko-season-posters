@@ -36,6 +36,8 @@
     scan: document.getElementById('scan'),
     apply: document.getElementById('apply'),
     logos: document.getElementById('logos'),
+    settingsToggle: document.getElementById('settings-toggle'),
+    settings: document.getElementById('settings'),
   };
   const pageSize = 25;
   let plan = null;
@@ -584,6 +586,102 @@
       el.shows.append(more);
     }
   }
+
+  const settingFields = [
+    {
+      key: 'showPosterText', label: 'Show poster text', options: { FollowLanguages: 'Follow languages', TextlessFirst: 'Textless first' },
+      help: 'Textless first gives each show a textless poster whenever one exists, while its seasons keep their titles. Textless artwork unlike every season\'s comes first. Only applies with Own show poster. Each show can override this.',
+    },
+    {
+      key: 'lookalikes', label: 'Avoid lookalike posters', options: { AvoidSameArtwork: 'Avoid same artwork', AvoidSameImageOnly: 'Avoid same image only', Off: 'Off' },
+      help: 'TMDB often holds one artwork in each language, textless or cropped differently. Avoid same artwork keeps those apart within a show when it can.',
+    },
+    { key: 'showPoster', label: 'Show poster', options: Object.fromEntries(Object.entries(showModes).filter(([value]) => value)), help: 'How the show poster relates to its main season. Each show can override this.' },
+    { key: 'splitSeasons', label: 'Split seasons', options: Object.fromEntries(Object.entries(splitPolicies).filter(([value]) => value)), help: 'What later parts use when they share a TMDB season or movie with an earlier part. Each show can override this.' },
+    { key: 'posterLanguages', label: 'Poster languages', type: 'text', help: 'Comma-separated, best first. "none" means textless or unknown.' },
+    { key: 'showPosterLanguages', label: 'Show poster languages', type: 'text', help: 'For the show\'s own poster. Empty uses the poster languages.' },
+    { key: 'logoLanguages', label: 'Logo languages', type: 'text', help: 'Comma-separated, best first. Empty leaves logos alone.' },
+    { key: 'minimumSeasonSharePercent', label: 'Season match threshold (%)', type: 'number', min: 51, max: 100, help: 'The share of an entry\'s episodes that must point at one TMDB season.' },
+    { key: 'autoApply', label: 'Apply automatically', type: 'checkbox', help: 'Off: scans only plan. On: scans and detected changes apply their plan.' },
+    { key: 'jellyfinUrl', label: 'Jellyfin URL', type: 'text', help: 'Only needed to upload own show posters to Jellyfin, for example http://jellyfin:8096.' },
+    { key: 'jellyfinApiKey', label: 'Jellyfin API key', type: 'password', help: '' },
+  ];
+
+  async function openSettings() {
+    const settings = await call('/settings');
+    const inputs = {};
+    const rows = settingFields.map((field) => {
+      let input;
+      if (field.options) {
+        input = make('select', {});
+        for (const [value, text] of Object.entries(field.options)) input.append(make('option', { value, textContent: text, selected: value === settings[field.key] }));
+      } else if (field.type === 'checkbox') {
+        input = make('input', { type: 'checkbox', checked: Boolean(settings[field.key]) });
+      } else if (field.type === 'password') {
+        input = make('input', { type: 'password', autocomplete: 'off', placeholder: settings.jellyfinApiKeySet ? 'Stored. Type a new key to replace it.' : 'Not set' });
+      } else {
+        input = make('input', { type: field.type, value: settings[field.key] ?? '', min: field.min ?? '', max: field.max ?? '' });
+      }
+      input.id = `setting-${field.key}`;
+      inputs[field.key] = input;
+      const help = field.key === 'jellyfinApiKey'
+        ? (settings.jellyfinApiKeySet ? 'A key is stored. Leave this empty to keep it.' : 'Only needed to upload own show posters to Jellyfin.')
+        : field.help;
+      return make(
+        'div',
+        { className: `setting${field.type === 'checkbox' ? ' check' : ''}` },
+        make('label', { htmlFor: input.id, textContent: field.label }),
+        input,
+        help ? make('p', { textContent: help }) : null,
+      );
+    });
+
+    const clearKey = make('input', { type: 'checkbox', id: 'setting-clear-key' });
+    const save = make('button', { type: 'button', className: 'primary', textContent: 'Save and scan' });
+    const close = make('button', { type: 'button', textContent: 'Close' });
+    save.addEventListener('click', () => run(async () => {
+      const body = {};
+      for (const field of settingFields) {
+        const input = inputs[field.key];
+        if (field.type === 'checkbox') body[field.key] = input.checked;
+        else if (field.type === 'number') body[field.key] = Number(input.value);
+        else body[field.key] = input.value;
+      }
+      body.clearJellyfinApiKey = clearKey.checked;
+      await call('/settings', { method: 'PUT', json: body });
+      el.summary.textContent = 'Saved. Scanning with the new settings… the first scan with lookalike checks can take a few minutes.';
+      plan = await call('/scan', { method: 'POST' });
+      el.settings.hidden = true;
+      el.settingsToggle.ariaExpanded = 'false';
+      render();
+      el.summary.textContent = `Settings saved. ${el.summary.textContent}`;
+    }, 'Saving settings…'));
+    close.addEventListener('click', () => {
+      el.settings.hidden = true;
+      el.settingsToggle.ariaExpanded = 'false';
+    });
+
+    el.settings.replaceChildren(
+      make('h2', { textContent: 'Settings' }),
+      make('p', { textContent: 'These apply to every show. Shoko\'s own settings pages do not show this plugin\'s settings, so they live here.' }),
+      make('div', { className: 'settings-grid' }, ...rows),
+      settings.jellyfinApiKeySet
+        ? make('div', { className: 'setting check' }, make('label', { htmlFor: clearKey.id, textContent: 'Remove the stored Jellyfin API key' }), clearKey)
+        : null,
+      make('div', { className: 'series-actions' }, save, close),
+    );
+    el.settings.hidden = false;
+    el.settingsToggle.ariaExpanded = 'true';
+  }
+
+  el.settingsToggle.addEventListener('click', () => {
+    if (!el.settings.hidden) {
+      el.settings.hidden = true;
+      el.settingsToggle.ariaExpanded = 'false';
+      return;
+    }
+    run(openSettings, 'Loading settings…').then((ok) => { if (ok && plan) render(); });
+  });
 
   const filterChanged = () => {
     visibleCount = pageSize;
