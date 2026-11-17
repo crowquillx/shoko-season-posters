@@ -1,8 +1,8 @@
 <Project>
   <PropertyGroup>
     <!-- The follow-shoko-daily workflow bumps these two lines when Shoko publishes new builds. -->
-    <ShokoAbstractionsVersion>6.0.0-alpha.131</ShokoAbstractionsVersion>
-    <ShokoBuildToolsTargetsVersion>0.8.0</ShokoBuildToolsTargetsVersion>
+    <ShokoAbstractionsVersion>6.0.0-alpha.132</ShokoAbstractionsVersion>
+    <ShokoBuildToolsTargetsVersion>0.8.1</ShokoBuildToolsTargetsVersion>
     <!-- The Magick.NET version the server ships, which the plugin borrows at runtime. -->
     <MagickNetVersion>14.17.1</MagickNetVersion>
     <TargetFramework>net10.0</TargetFramework>
