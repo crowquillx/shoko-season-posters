@@ -15,6 +15,24 @@
   "is_meta": false,
   "releases": [
     {
+      "version": "0.1.17",
+      "tag": "v0.1.17",
+      "released_at": "2026-11-25T17:29:11.9390719Z",
+      "channel": "Dev",
+      "is_meta": false,
+      "dependencies": [],
+      "archives": [
+        {
+          "runtime": "any",
+          "abstraction": "6.0.0",
+          "url": "https://github.com/crowquillx/shoko-season-posters/releases/download/v0.1.17/Shoko.SeasonPosters-v0.1.17.zip",
+          "checksum": "sha256:766a4817330e588f930f8c6acebacb153cb67a411064cc6297b739dd6ea08028",
+          "packed_size": 149966,
+          "unpacked_size": 397968
+        }
+      ]
+    },
+    {
       "version": "0.1.16",
       "tag": "v0.1.16",
       "released_at": "2026-11-23T18:34:10.0251791Z",
@@ -173,24 +191,6 @@
           "checksum": "sha256:92d44fd36e1e9a4e163b8d019010f7aef30a40216264cddb8c7222b869cd8807",
           "packed_size": 137648,
           "unpacked_size": 357199
-        }
-      ]
-    },
-    {
-      "version": "0.1.7",
-      "tag": "v0.1.7",
-      "released_at": "2026-11-15T20:52:48.2187079Z",
-      "channel": "Dev",
-      "is_meta": false,
-      "dependencies": [],
-      "archives": [
-        {
-          "runtime": "any",
-          "abstraction": "6.0.0",
-          "url": "https://github.com/crowquillx/shoko-season-posters/releases/download/v0.1.7/Shoko.SeasonPosters-v0.1.7.zip",
-          "checksum": "sha256:59a6f232632023223b818dd361278081f37b28564d6619d02dc2085ffe034c22",
-          "packed_size": 132686,
-          "unpacked_size": 341665
         }
       ]
     }
