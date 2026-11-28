@@ -19,5 +19,7 @@ jobs:
           global-json-file: global.json
       - name: Build and test
         run: dotnet test Shoko.SeasonPosters.slnx -c Release
+      - name: Check the oldest supported server
+        run: scripts/check-compat.sh
       - name: Check the review page script
         run: node --check src/Web/Ui/app.js

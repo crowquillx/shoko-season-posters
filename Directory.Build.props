@@ -1,9 +1,20 @@
 <Project>
   <PropertyGroup>
-    <!-- The follow-shoko-daily workflow bumps these two lines when Shoko publishes new builds. -->
-    <ShokoAbstractionsVersion>6.0.0-alpha.144</ShokoAbstractionsVersion>
+    <!--
+      The Shoko.Abstractions the plugin is built against. A server only loads a plugin built against its own
+      abstraction version or an older one, so this stays on the oldest stable release that has what the plugin
+      needs. Moving it to 6.1.0 would drop every 6.0 server. The follow-shoko workflow tests against newer
+      builds without moving it.
+    -->
+    <ShokoAbstractionsVersion>6.0.0</ShokoAbstractionsVersion>
+    <!--
+      The oldest Shoko.Abstractions the plugin still works with, first shipped in Shoko daily v6.0.0-dev.551.
+      Older 6.0 dailies report the same abstraction version, so they would install the plugin and fail to load it.
+      CI checks that the plugin still compiles, passes its tests and finds everything it uses in this build.
+    -->
+    <ShokoAbstractionsFloorVersion>6.0.0-alpha.113</ShokoAbstractionsFloorVersion>
     <ShokoBuildToolsTargetsVersion>0.8.1</ShokoBuildToolsTargetsVersion>
-    <!-- The Magick.NET version the server ships, which the plugin borrows at runtime. -->
+    <!-- The Magick.NET version the server ships (the same from v6.0.0-dev.551 to 6.0.0), which the plugin borrows at runtime. -->
     <MagickNetVersion>14.17.1</MagickNetVersion>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
