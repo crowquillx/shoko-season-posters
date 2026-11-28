@@ -4,11 +4,11 @@ A [Shoko Server](https://shokoanime.com) plugin that gives every season in a Jel
 
 Without it, seasons in a group usually end up on low-resolution AniDB posters or all share one TMDB show poster. Shokofin picks from a merged image list without knowing which poster came from the show and which from the season. This plugin works that out in Shoko and marks the right poster as preferred, which Shokofin already respects. Neither Shoko nor Shokofin needs changing.
 
-Daily Shoko only. It uses the 6.0 plugin API, which stable 5.3 does not have. Shokofin must be a dev build, as Shokofin requires with a daily server.
+Needs Shoko Server 6.0 or later, and works with Shokofin 6.1. Daily builds from `v6.0.0-dev.551` on work too. Shoko 5.x can't load it, because 6.0 replaced the plugin API, and nor can dailies before `v6.0.0-dev.551`: they would install it and then fail to load it.
 
 ## Status
 
-Early, tested against one real library on Shoko `v6.0.0-dev.588`.
+Early, tested against one real library on Shoko `v6.0.0-dev.588`. Not yet tested on stable 6.0.0, though it builds against it and finds everything it uses in it.
 
 - **Verified:** loading, planning, the review page and the Shoko side of applying. On 834 shows and 1,340 entries, no poster was used twice in a show. Applying a show set its season posters as preferred and downloaded them.
 - **Verified on `v6.0.0-dev.591` with Shokofin and Jellyfin `12.4.0`:** a show poster upload to Jellyfin, and its restore after the poster was replaced.
@@ -156,12 +156,19 @@ dotnet test Shoko.SeasonPosters.slnx -c Release
 
 The poster decisions are pure functions in `src/Planning`, so most behaviour can be tested without a server. `src/Library` reads from Shoko, `src/Imaging` makes poster fingerprints, `src/Jellyfin` handles uploads, `src/Web` holds the API and review page, and `src/Background` holds the triggers.
 
-### Staying current with daily Shoko
+### Server compatibility
 
-The plugin API moves with Shoko's daily builds, and a plugin built against a newer API than the server has will not load, so keep your server up to date.
+A server only loads a plugin built against its own `Shoko.Abstractions` version or an older one, so the plugin is built against the oldest stable release it needs, `6.0.0`, and that only moves when the plugin needs something newer. Moving it to `6.1.0` would drop every 6.0 server.
 
-- **`follow-shoko-daily.yml`** runs daily and moves `Directory.Build.props` to the newest packages. If the build and tests pass, it commits the bump and publishes. If they fail, it opens an issue and the feed stays on the last working version.
-- **`publish.yml`** builds with `shoko-build`, creates a prerelease and updates `manifest.json` on the `metadata` branch. The feed lives there because Shoko needs a text content type, which raw GitHub files have and release assets do not. It can also be run by hand.
-- **`ci.yml`** runs the tests on pushes and pull requests.
+Every 6.0 build, dailies included, reports the same abstraction version, so an older daily installs the plugin even when it lacks something the plugin uses, and then fails to load it. `ShokoAbstractionsFloorVersion` in `Directory.Build.props` is the oldest build that has everything, and `scripts/check-compat.sh` checks the plugin against it. For each version it builds and tests against it, then uses `tools/AbiCheck` to find every `Shoko.Abstractions` type and member the shipped plugin uses in it. Passing tests alone aren't enough: a source change can keep compiling while the built plugin no longer finds what it uses. Pass versions to check others:
 
-Passing tests show the plugin compiles and its logic holds against the new API. They don't prove it runs correctly on the new server.
+```sh
+scripts/check-compat.sh                    # the floor
+scripts/check-compat.sh 6.0.1-alpha.3      # any other build
+```
+
+- **`ci.yml`** runs the tests and checks the floor on pushes and pull requests.
+- **`follow-shoko.yml`** runs daily and checks the plugin against the newest `Shoko.Abstractions`, daily builds included. It never moves the version the plugin is built against. If the newest build breaks the plugin, it opens an issue.
+- **`publish.yml`** runs when the plugin changes on `main`, or by hand. It checks the floor, builds with a pinned `shoko-build`, creates a Stable release and updates `manifest.json` on the `metadata` branch. Stable releases reach servers on every channel. The feed lives there because Shoko needs a text content type, which raw GitHub files have and release assets do not.
+
+These checks show the plugin compiles, its logic holds and it finds everything it uses. They don't prove it runs correctly on every server.

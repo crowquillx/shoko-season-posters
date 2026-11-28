@@ -1,0 +1,64 @@
+# Every day this tests the plugin against the newest Shoko.Abstractions, daily builds included, without moving what
+# the plugin is built against. Building against a newer version would stop older servers loading it (see
+# Directory.Build.props). When the newest build breaks the plugin, it opens an issue with the output.
+name: Follow Shoko
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: follow-shoko
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Find the newest build
+        id: newest
+        run: |
+          set -euo pipefail
+          newest="$(curl -fsSL https://api.nuget.org/v3-flatcontainer/shoko.abstractions/index.json | jq -r '.versions[-1]')"
+          echo "version=$newest" >> "$GITHUB_OUTPUT"
+
+      - name: Check the plugin against it
+        id: check
+        env:
+          VERSION: ${{ steps.newest.outputs.version }}
+        run: |
+          set -o pipefail
+          scripts/check-compat.sh "$VERSION" 2>&1 | tee check-output.txt
+
+      - name: Report a break
+        if: failure() && steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.newest.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Breaks on Shoko.Abstractions $VERSION"
+          if [ -n "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number')" ]; then
+            exit 0
+          fi
+          {
+            echo "The plugin does not build, pass its tests or find what it uses in \`$VERSION\`, so servers on it may fail to load the plugin."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            grep -E 'error|\[FAIL\]|Failed!|missing|^  (type|member) ' check-output.txt | sort -u | head -50
+            echo '```'
+          } > issue.md
+          gh issue create --title "$title" --body-file issue.md

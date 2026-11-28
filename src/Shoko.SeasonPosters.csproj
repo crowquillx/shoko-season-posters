@@ -8,7 +8,7 @@
     <PluginOverview>Gives every season in a Shoko group its own accurate poster, with a review page for anything uncertain.</PluginOverview>
     <PluginNamespace>season-posters</PluginNamespace>
     <PluginTags>images,posters,jellyfin</PluginTags>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
